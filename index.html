@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Art Generator</title>
+</head>
+
+<body>
+  <div id="app-container">
+    <div id="canvas-container"></div>
+    <div id="control-panel">
+      <h2>Controls</h2>
+
+      <div class="control-group">
+        <label for="image-upload">Upload Image:</label>
+        <input type="file" id="image-upload" accept="image/*">
+      </div>
+
+      <div class="control-group">
+        <button id="reset-image">Reset to Default Image</button>
+      </div>
+
+      <div class="control-group">
+        <label for="mp">Midpoint:</label>
+        <input type="range" id="mp" min="0" max="100" value="50">
+        <input type="number" id="mp-value" min="0" max="100" value="50">
+      </div>
+
+      <div class="control-group">
+        <label for="cf">Contrast:</label>
+        <input type="range" id="cf" min="0" max="100" value="55">
+        <input type="number" id="cf-value" min="0" max="100" value="55">
+      </div>
+
+      <div class="control-group">
+        <label for="density-input">Input Characters:</label>
+        <input type="text" id="density-input" value="RRBZ21">
+      </div>
+
+      <div class="control-group">
+        <label for="zero-slider">Append Zeros:</label>
+        <input type="range" id="zero-slider" min="2" max="8" value="4">
+        <span id="zero-value">4</span>
+      </div>
+
+      <div class="control-group">
+        <label>Number of Colors:</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="color-count-1" name="color-count" value="1">
+            <label for="color-count-1">1</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="color-count-2" name="color-count" value="2" checked>
+            <label for="color-count-2">2</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="color-count-3" name="color-count" value="3">
+            <label for="color-count-3">3</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group" id="lerp-control">
+        <label>LERP:</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="lerp-true" name="lerp" value="true" checked>
+            <label for="lerp-true">True</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="lerp-false" name="lerp" value="false">
+            <label for="lerp-false">False</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group" id="start-color">
+        <h3>Start Color</h3>
+        <div class="color-slider-group">
+          <div class="color-slider-container">
+            <label for="start-color-r">R</label>
+            <input type="range" id="start-color-r" class="color-slider" data-color="start" data-channel="r" min="0"
+              max="255" value="255">
+          </div>
+          <div class="color-slider-container">
+            <label for="start-color-g">G</label>
+            <input type="range" id="start-color-g" class="color-slider" data-color="start" data-channel="g" min="0"
+              max="255" value="255">
+          </div>
+          <div class="color-slider-container">
+            <label for="start-color-b">B</label>
+            <input type="range" id="start-color-b" class="color-slider" data-color="start" data-channel="b" min="0"
+              max="255" value="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group" id="middle-color">
+        <h3>Middle Color</h3>
+        <div class="color-slider-group">
+          <div class="color-slider-container">
+            <label for="middle-color-r">R</label>
+            <input type="range" id="middle-color-r" class="color-slider" data-color="middle" data-channel="r" min="0"
+              max="255" value="255">
+          </div>
+          <div class="color-slider-container">
+            <label for="middle-color-g">G</label>
+            <input type="range" id="middle-color-g" class="color-slider" data-color="middle" data-channel="g" min="0"
+              max="255" value="155">
+          </div>
+          <div class="color-slider-container">
+            <label for="middle-color-b">B</label>
+            <input type="range" id="middle-color-b" class="color-slider" data-color="middle" data-channel="b" min="0"
+              max="255" value="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group" id="end-color">
+        <h3>End Color</h3>
+        <div class="color-slider-group">
+          <div class="color-slider-container">
+            <label for="end-color-r">R</label>
+            <input type="range" id="end-color-r" class="color-slider" data-color="end" data-channel="r" min="0"
+              max="255" value="255">
+          </div>
+          <div class="color-slider-container">
+            <label for="end-color-g">G</label>
+            <input type="range" id="end-color-g" class="color-slider" data-color="end" data-channel="g" min="0"
+              max="255" value="0">
+          </div>
+          <div class="color-slider-container">
+            <label for="end-color-b">B</label>
+            <input type="range" id="end-color-b" class="color-slider" data-color="end" data-channel="b" min="0"
+              max="255" value="255">
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="columns">Number of Columns:</label>
+        <input type="number" id="columns" min="1" value="120">
+      </div>
+
+      <div class="control-group">
+        <label for="png-width">PNG Width:</label>
+        <input type="number" id="png-width" min="1" value="900">
+        <button id="download-png">Download PNG</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>

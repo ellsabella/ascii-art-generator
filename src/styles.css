@@ -1,0 +1,128 @@
+body,
+html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: 'Courier New', Courier, monospace;
+    box-sizing: border-box;
+}
+
+#app-container {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+}
+
+#canvas-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Ensure no fixed dimensions are set */
+    width: auto;
+    height: auto;
+}
+
+#control-panel {
+    width: 300px;
+    padding: 10px;
+    background-color: #f0f0f0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    /* Space between control groups */
+}
+
+canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+/* img,
+canvas {
+    max-width: none;
+    max-height: none;
+    width: auto;
+    height: auto;
+} */
+
+/* Control groups stack vertically */
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+/* Radio buttons within a group align horizontally */
+.radio-group {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    justify-content: flex-start;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.radio-option input[type="radio"] {
+    margin-right: 5px;
+}
+
+/* Labels and input layout */
+label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+input[type="range"] {
+    width: 100%;
+}
+
+input[type="number"],
+select {
+    width: 100%;
+    padding: 5px;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+button {
+    padding: 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+/* Color slider controls */
+.color-slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.color-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.color-slider-container label {
+    width: 30px;
+    /* Slightly wider for better alignment */
+    text-align: right;
+}
+
+.color-slider {
+    flex-grow: 1;
+}
