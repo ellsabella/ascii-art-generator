@@ -21,6 +21,8 @@ function createSketch(p) {
   window.startColor = [255, 255, 0];
   window.middleColor = [255, 205, 0];
   window.endColor = [255, 0, 255];
+  window.bgColorOption = "black";
+  window.customBgColor = [0, 0, 0];
 
   let colorMap;
   let isDownloading = false;
@@ -155,7 +157,20 @@ function createSketch(p) {
     const isOffscreen = graphics !== null;
     const canvas = isOffscreen ? graphics : p;
     const imgToUse = isOffscreen ? highResImg : img;
-    canvas.background(0);
+    switch (window.bgColorOption) {
+      case "black":
+        canvas.background(0);
+        break;
+      case "white":
+        canvas.background(255);
+        break;
+      case "transparent":
+        canvas.clear();
+        break;
+      case "custom":
+        canvas.background(window.customBgColor);
+        break;
+    }
     canvas.textFont(font);
 
     const scaleX = canvas.width / p.width;

@@ -72,11 +72,26 @@ export function initializeControls(p5Instance) {
     });
   }
 
+  // Invert radio buttons
+  const invertRadios = document.querySelectorAll('input[name="invert"]');
+  if (invertRadios.length > 0) {
+    invertRadios.forEach((elem) => {
+      elem.addEventListener("change", function (event) {
+        window.invert = event.target.value === "true";
+        window.updateSketch();
+      });
+    });
+  }
+
   // Number of columns
+
   const columnsInput = document.getElementById("columns");
-  if (columnsInput) {
-    columnsInput.addEventListener("change", function (event) {
-      window.gridColumns = parseInt(event.target.value);
+  const columnsValue = document.getElementById("columns-value");
+  if (columnsInput && columnsValue) {
+    columnsInput.addEventListener("input", function (event) {
+      const value = parseInt(event.target.value);
+      window.gridColumns = value;
+      columnsValue.textContent = value;
       window.updateSketch();
     });
   }
@@ -129,6 +144,35 @@ export function initializeControls(p5Instance) {
         let value = parseInt(event.target.value);
 
         window[color + "Color"][["r", "g", "b"].indexOf(channel)] = value;
+        window.updateSketch();
+      });
+    });
+  }
+
+  // Background color radio buttons
+  const bgColorRadios = document.querySelectorAll('input[name="bg-color"]');
+  const customBgColorDiv = document.getElementById("custom-bg-color");
+  if (bgColorRadios.length > 0) {
+    bgColorRadios.forEach((elem) => {
+      elem.addEventListener("change", function (event) {
+        window.bgColorOption = event.target.value;
+        customBgColorDiv.style.display =
+          event.target.value === "custom" ? "block" : "none";
+        window.updateSketch();
+      });
+    });
+  }
+
+  // Custom background color sliders
+  const bgColorSliders = document.querySelectorAll(
+    "#custom-bg-color .color-slider"
+  );
+  if (bgColorSliders.length > 0) {
+    bgColorSliders.forEach((elem) => {
+      elem.addEventListener("input", function (event) {
+        let channel = event.target.dataset.channel;
+        let value = parseInt(event.target.value);
+        window.customBgColor[["r", "g", "b"].indexOf(channel)] = value;
         window.updateSketch();
       });
     });

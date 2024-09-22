@@ -24,7 +24,7 @@ html {
 }
 
 #control-panel {
-    width: 300px;
+    width: 420px;
     padding: 10px;
     background-color: #f0f0f0;
     overflow-y: auto;
@@ -53,14 +53,14 @@ canvas {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 /* Radio buttons within a group align horizontally */
 .radio-group {
     display: flex;
     flex-direction: row;
-    gap: 10px;
+    gap: 5px;
     justify-content: flex-start;
 }
 
