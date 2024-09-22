@@ -46,6 +46,20 @@
       </div>
 
       <div class="control-group">
+        <label>Invert:</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="invert-true" name="invert" value="true" checked>
+            <label for="invert-true">True</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="invert-false" name="invert" value="false">
+            <label for="invert-false">False</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group">
         <label>Number of Colors:</label>
         <div class="radio-group">
           <div class="radio-option">
@@ -141,9 +155,53 @@
       </div>
 
       <div class="control-group">
-        <label for="columns">Number of Columns:</label>
-        <input type="number" id="columns" min="1" value="120">
+        <h3>Background Color</h3>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="bg-black" name="bg-color" value="black" checked>
+            <label for="bg-black">Black</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="bg-white" name="bg-color" value="white">
+            <label for="bg-white">White</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="bg-transparent" name="bg-color" value="transparent">
+            <label for="bg-transparent">Transparent</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="bg-custom" name="bg-color" value="custom">
+            <label for="bg-custom">Custom</label>
+          </div>
+        </div>
       </div>
+
+      <div class="control-group" id="custom-bg-color" style="display: none;">
+        <h4>Custom Background Color</h4>
+        <div class="color-slider-group">
+          <div class="color-slider-container">
+            <label for="bg-color-r">R</label>
+            <input type="range" id="bg-color-r" class="color-slider" data-color="bg" data-channel="r" min="0" max="255"
+              value="0">
+          </div>
+          <div class="color-slider-container">
+            <label for="bg-color-g">G</label>
+            <input type="range" id="bg-color-g" class="color-slider" data-color="bg" data-channel="g" min="0" max="255"
+              value="0">
+          </div>
+          <div class="color-slider-container">
+            <label for="bg-color-b">B</label>
+            <input type="range" id="bg-color-b" class="color-slider" data-color="bg" data-channel="b" min="0" max="255"
+              value="0">
+          </div>
+        </div>
+      </div>
+
+    <div class="control-group">
+      <label for="columns">Number of Columns:</label>
+      <input type="range" id="columns" min="10" max="300" value="150">
+      <span id="columns-value">150</span>
+    </div>
 
       <div class="control-group">
         <label for="png-width">PNG Width:</label>
