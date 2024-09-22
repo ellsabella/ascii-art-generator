@@ -1,6 +1,7 @@
 import p5 from "p5";
 import "./styles.css";
 import { initializeControls, loadNewImage } from "./controls.js";
+import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 
 let p5Instance;
 p5Instance = new p5(createSketch);
@@ -26,11 +27,22 @@ function createSketch(p) {
 
   let colorMap;
   let isDownloading = false;
+  let originalFont;
 
   p.preload = function () {
     const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
     const defaultImagePath = import.meta.env.VITE_DEFAULT_IMAGE;
-
+    loadFont(defaultFontPath)
+      .then((loadedFont) => {
+        originalFont = loadedFont;
+        fontLoaded = true;
+        if (p.setup && typeof p.setup === "function") {
+          p.setup();
+        }
+      })
+      .catch((error) => {
+        console.error("Error loading font:", error);
+      });
     font = p.loadFont(defaultFontPath);
     window.defaultImageLoaded = new Promise((resolve) => {
       loadNewImage(defaultImagePath, p, true, resolve);
@@ -157,20 +169,8 @@ function createSketch(p) {
     const isOffscreen = graphics !== null;
     const canvas = isOffscreen ? graphics : p;
     const imgToUse = isOffscreen ? highResImg : img;
-    switch (window.bgColorOption) {
-      case "black":
-        canvas.background(0);
-        break;
-      case "white":
-        canvas.background(255);
-        break;
-      case "transparent":
-        canvas.clear();
-        break;
-      case "custom":
-        canvas.background(window.customBgColor);
-        break;
-    }
+    const bgColor = getBgColor();
+    canvas.background(bgColor);
     canvas.textFont(font);
 
     const scaleX = canvas.width / p.width;
@@ -222,6 +222,21 @@ function createSketch(p) {
         const yPos = (y + 0.5) * cellHeight;
         canvas.text(c, xPos, yPos);
       }
+    }
+  }
+
+  function getBgColor() {
+    switch (window.bgColorOption) {
+      case "black":
+        return "black";
+      case "white":
+        return "white";
+      case "transparent":
+        return "none";
+      case "custom":
+        return `rgb(${window.customBgColor.join(",")})`;
+      default:
+        return "black";
     }
   }
 
@@ -331,77 +346,94 @@ function createSketch(p) {
       (error) => console.error("Error loading image:", error)
     );
   };
-
-  window.createAndDownloadSVG = function () {
-    const width = window.gridColumns;
-    const height = Math.floor(window.gridColumns * (p.height / p.width)); // Maintain aspect ratio
-    let colorClasses = "";
-
-    colorMap.forEach((color, char) => {
-      colorClasses += `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`;
-    });
-
-    let svgContent = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">
-        <style>
-          ${colorClasses}
-          text{font-family:monospace;font-size:1px;dominant-baseline:hanging}
-        </style>
-        <rect width="100%" height="100%" fill="black"/>
-    `;
-
-    for (let y = 0; y < height; y++) {
-      let rowContent = "";
-      let currentChar = "";
-      let charCount = 0;
-      let xPosition = 0;
-
-      for (let x = 0; x < width; x++) {
-        const imgX = p.floor(x * (p.width / width));
-        const imgY = p.floor(y * (p.height / height));
-        const w = p.width / width;
-        const h = p.height / height;
-
-        const avg = getAverageGrayscale(p.get(), imgX, imgY, w, h);
-        const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-        const charIndex = window.invert
-          ? p.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-          : p.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-        const c = window.density.charAt(charIndex);
-
-        if (c !== currentChar) {
-          if (currentChar) {
-            rowContent += `<tspan x="${xPosition}" class="c${currentChar}">${currentChar.repeat(
-              charCount
-            )}</tspan>`;
-            xPosition += charCount;
+  window.createAndDownloadSVG = async function () {
+    try {
+      const width = window.gridColumns;
+      const height = Math.floor(window.gridColumns * (p.height / p.width));
+      
+      const uniqueChars = [...new Set(window.density)].join('');
+      if (!window.loadedFont) {
+        const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
+        window.loadedFont = await loadFont(defaultFontPath);
+      }
+      const subsetFontData = await getSubsetFont(window.loadedFont, uniqueChars);
+      const fontBase64 = fontToBase64(subsetFontData);
+      
+      let colorClasses = "";
+      colorMap.forEach((color, char) => {
+        colorClasses += `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`;
+      });
+  
+      const cellSize = 10; // Standard cell size
+      const fontSize = 9; // 90% of cell size
+  
+      let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
+  <defs>
+  <style>
+  @font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
+  ${colorClasses}
+  text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
+  </style>
+  </defs>
+  <rect width="100%" height="100%" fill="${getBgColor()}"/>
+  `;
+  
+      const imgCopy = window.img.get();
+      imgCopy.loadPixels();
+  
+      for (let y = 0; y < height; y++) {
+        let rowContent = "";
+        let currentChar = "";
+        let charPositions = [];
+  
+        for (let x = 0; x < width; x++) {
+          const imgX = Math.floor(x * (imgCopy.width / width));
+          const imgY = Math.floor(y * (imgCopy.height / height));
+          const w = Math.ceil(imgCopy.width / width);
+          const h = Math.ceil(imgCopy.height / height);
+  
+          const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
+          const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+          const charIndex = window.invert
+            ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
+            : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+          const c = window.density.charAt(charIndex);
+  
+          if (c !== currentChar || x === width - 1) {
+            if (currentChar) {
+              const xPositions = charPositions.map(pos => pos * cellSize).join(',');
+              rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
+            }
+            currentChar = c;
+            charPositions = [x];
+          } else {
+            charPositions.push(x);
           }
-          currentChar = c;
-          charCount = 1;
-        } else {
-          charCount++;
+  
+          if (x === width - 1 && c === currentChar) {
+            const xPositions = charPositions.map(pos => pos * cellSize).join(',');
+            rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
+          }
         }
+  
+        svgContent += `<text y="${(y + 0.5) * cellSize}">${rowContent}</text>`;
       }
-
-      if (currentChar) {
-        rowContent += `<tspan x="${xPosition}" class="c${currentChar}">${currentChar.repeat(
-          charCount
-        )}</tspan>`;
-      }
-
-      svgContent += `<text y="${y}">${rowContent}</text>`;
+  
+      svgContent += "</svg>";
+  
+      const blob = new Blob([svgContent], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "ascii-art.svg";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error creating SVG:", error);
     }
-
-    svgContent += "</svg>";
-
-    const blob = new Blob([svgContent], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "ascii-art.svg";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
+  
 }

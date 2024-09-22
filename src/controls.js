@@ -113,6 +113,12 @@ export function initializeControls(p5Instance) {
     });
   }
 
+  // SVG download button
+  const downloadSvgButton = document.getElementById("download-svg");
+  if (downloadSvgButton) {
+    downloadSvgButton.addEventListener("click", window.createAndDownloadSVG);
+  }
+
   // Color count radio buttons
   const colorCountRadios = document.querySelectorAll(
     'input[name="color-count"]'
@@ -123,12 +129,17 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  // LERP radio buttons
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
+  const svgDownloadContainer = document.getElementById(
+    "svg-download-container"
+  );
   if (lerpRadios.length > 0) {
     lerpRadios.forEach((elem) => {
       elem.addEventListener("change", function (event) {
         window.LERP = event.target.value === "true";
+        if (svgDownloadContainer) {
+          svgDownloadContainer.style.display = window.LERP ? "none" : "block";
+        }
         window.updateSketch();
       });
     });
