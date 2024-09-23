@@ -4,11 +4,11 @@ import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 
 let p5Instance;
-p5Instance = new p5(createSketch);
-window.p5Instance = p5Instance;
 
 function createSketch(p) {
-  let font, gridRows, gw, ar, windowAR, offscreen, highResImg;
+  let font;
+  let gridRows, gw, ar, windowAR, offscreen, highResImg;
+
   window.baseDensity = "RRBZ21";
   window.zeroCount = 4;
   window.density = window.baseDensity + "0".repeat(window.zeroCount);
@@ -29,47 +29,76 @@ function createSketch(p) {
   let isDownloading = false;
   let originalFont;
 
+  window.updateSketch = async function () {
+    try {
+      if (!window.img || typeof window.img.height === 'undefined' || typeof window.img.width === 'undefined') {
+        return;
+      }
+      if (!p || typeof p.floor !== 'function' || typeof p.width === 'undefined') {
+        return;
+      }
+      gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
+      gw = p.width / window.gridColumns;
+      p.textSize(gw * 0.9);
+      if (typeof updateColorMap === 'function') {
+        updateColorMap();
+      }
+      if (typeof drawAsciiArt === 'function') {
+        drawAsciiArt();
+      }
+      p.redraw();
+    } catch (error) {
+    }
+  };
+
   p.preload = function () {
     const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
     const defaultImagePath = import.meta.env.VITE_DEFAULT_IMAGE;
-    loadFont(defaultFontPath)
-      .then((loadedFont) => {
-        originalFont = loadedFont;
-        fontLoaded = true;
-        if (p.setup && typeof p.setup === "function") {
-          p.setup();
-        }
-      })
-      .catch((error) => {
-        console.error("Error loading font:", error);
-      });
-    font = p.loadFont(defaultFontPath);
-    window.defaultImageLoaded = new Promise((resolve) => {
+
+    font = p.loadFont(defaultFontPath, () => {
+      console.log("Font loaded successfully.");
+    }, (err) => {
+      console.error("Error loading font:", err);
+    });
+
+    window.defaultImageLoaded = new Promise((resolve, reject) => {
       loadNewImage(defaultImagePath, p, true, resolve);
     });
   };
 
   p.setup = function () {
+    if (!font) {
+      console.error("Font not loaded before setup.");
+      return;
+    }
+
     let canvas = p.createCanvas(100, 100);
     canvas.parent("canvas-container");
+    const ctx = canvas.elt.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      console.warn("Failed to set 'willReadFrequently' on canvas context.");
+    }
 
     p.frameRate(60);
     p.pixelDensity(1);
     p.textFont(font);
 
     window.p5Instance = p;
+
     window.defaultImageLoaded.then(() => {
       console.log("Default image loaded, initializing sketch");
       initializeSketch();
+    }).catch((error) => {
+      console.error("Error loading default image:", error);
     });
   };
 
   function initializeSketch() {
-    console.log(
-      `Image loaded. Dimensions: ${window.img.width}x${window.img.height}`
-    );
+    if (!window.img) {
+      console.error("No image loaded to initialize sketch.");
+      return;
+    }
     setCanvasSize();
-    console.log(`Canvas size after setCanvasSize: ${p.width}x${p.height}`);
     window.img.resize(p.width, 0);
 
     gridRows = p.floor(window.gridColumns * (p.height / p.width));
@@ -96,7 +125,7 @@ function createSketch(p) {
     gridRows = p.floor(window.gridColumns * (p.height / p.width));
     gw = p.width / window.gridColumns;
     createOffscreenBuffer();
-    drawAsciiArt();
+    window.updateSketch();
   };
 
   function setCanvasSize() {
@@ -111,9 +140,9 @@ function createSketch(p) {
     }
 
     if (windowAR > ar) {
-      p.resizeCanvas(h * ar, h);
+      p.resizeCanvas(Math.floor(h * ar), h);
     } else {
-      p.resizeCanvas(w, w / ar);
+      p.resizeCanvas(w, Math.floor(w / ar));
     }
   }
 
@@ -121,7 +150,13 @@ function createSketch(p) {
     const scaleFactor = window.printRes / Math.max(p.width, p.height);
     const offscreenWidth = Math.floor(p.width * scaleFactor);
     const offscreenHeight = Math.floor(p.height * scaleFactor);
-    offscreen = p.createGraphics(offscreenWidth, offscreenHeight);
+
+    if (offscreen) {
+      offscreen.resizeCanvas(offscreenWidth, offscreenHeight);
+    } else {
+      offscreen = p.createGraphics(offscreenWidth, offscreenHeight);
+    }
+
     if (window.img) {
       highResImg = window.img.get();
       highResImg.resize(offscreenWidth, offscreenHeight);
@@ -168,7 +203,7 @@ function createSketch(p) {
   function drawAsciiArt(graphics = null) {
     const isOffscreen = graphics !== null;
     const canvas = isOffscreen ? graphics : p;
-    const imgToUse = isOffscreen ? highResImg : img;
+    const imgToUse = isOffscreen ? highResImg : window.img;
     const bgColor = getBgColor();
     canvas.background(bgColor);
     canvas.textFont(font);
@@ -176,7 +211,7 @@ function createSketch(p) {
     const scaleX = canvas.width / p.width;
     const scaleY = canvas.height / p.height;
 
-    const scaledGridColumns = Math.floor(gridColumns * scaleX);
+    const scaledGridColumns = Math.floor(window.gridColumns * scaleX);
     const scaledGridRows = Math.floor(gridRows * scaleY);
     const cellWidth = canvas.width / scaledGridColumns;
     const cellHeight = canvas.height / scaledGridRows;
@@ -190,30 +225,20 @@ function createSketch(p) {
       for (let x = 0; x < scaledGridColumns; x++) {
         const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
         const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
+        const w = Math.ceil(imgToUse.width / scaledGridColumns);
+        const h = Math.ceil(imgToUse.height / scaledGridRows);
 
-        const avg = getAverageGrayscale(
-          imgToUse,
-          imgX,
-          imgY,
-          imgToUse.width / scaledGridColumns,
-          imgToUse.height / scaledGridRows
-        );
+        const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
         const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
         const charIndex = window.invert
           ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-          : Math.floor(
-              p.map(adjustedAvg, 0, 255, 0, window.density.length - 1)
-            );
+          : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
         const c = window.density.charAt(charIndex);
 
         const charColor = colorMap.get(c);
 
         if (charColor) {
-          canvas.fill(
-            charColor.levels[0],
-            charColor.levels[1],
-            charColor.levels[2]
-          );
+          canvas.fill(charColor.levels[0], charColor.levels[1], charColor.levels[2]);
         } else {
           canvas.fill(255);
         }
@@ -232,9 +257,14 @@ function createSketch(p) {
       case "white":
         return "white";
       case "transparent":
-        return "none";
+        return "transparent";
       case "custom":
-        return `rgb(${window.customBgColor.join(",")})`;
+        if (Array.isArray(window.customBgColor)) {
+          return `rgb(${window.customBgColor.join(",")})`;
+        } else {
+          console.error("customBgColor is not properly initialized");
+          return "black";
+        }
       default:
         return "black";
     }
@@ -260,35 +290,16 @@ function createSketch(p) {
   function adjustBrightnessContrast(value, contrastFactor, midpoint) {
     return (value - midpoint) * contrastFactor + midpoint;
   }
-  window.updateColorMap = updateColorMap;
+
   window.drawAsciiArt = drawAsciiArt;
   window.createOffscreenBuffer = createOffscreenBuffer;
   window.initializeSketch = initializeSketch;
 
   window.updateDensity = function () {
     window.baseDensity = document.getElementById("density-input").value;
-    window.zeroCount = parseInt(document.getElementById("zero-slider").value);
+    window.zeroCount = parseInt(document.getElementById("zero-slider").value, 10);
     window.density = window.baseDensity + "0".repeat(window.zeroCount);
     window.updateSketch();
-  };
-
-  window.updateSketch = function () {
-    console.log("Current values:", {
-      LERP: window.LERP,
-      mP: window.mP,
-      cF: window.cF,
-      density: window.density,
-      gridColumns: window.gridColumns,
-      startColor: window.startColor,
-      middleColor: window.middleColor,
-      endColor: window.endColor,
-    });
-    gridRows = p.floor(window.gridColumns * (img.height / img.width));
-    gw = p.width / window.gridColumns;
-    p.textSize(gw * 0.9);
-    updateColorMap();
-    drawAsciiArt();
-    p.redraw();
   };
 
   window.downloadPNG = function () {
@@ -298,8 +309,6 @@ function createSketch(p) {
     }
 
     isDownloading = true;
-    console.log("downloadPNG function called");
-
     const downloadButton = document.getElementById("download-png");
     if (downloadButton) {
       downloadButton.disabled = true;
@@ -307,9 +316,8 @@ function createSketch(p) {
 
     console.log("Downloading PNG...");
 
-    const pngWidth = parseInt(document.getElementById("png-width").value);
+    const pngWidth = parseInt(document.getElementById("png-width").value, 10);
     if (isNaN(pngWidth) || pngWidth <= 0) {
-      console.error("Invalid PNG width");
       isDownloading = false;
       if (downloadButton) {
         downloadButton.disabled = false;
@@ -320,6 +328,7 @@ function createSketch(p) {
     const offscreenBuffer = p.createGraphics(pngWidth, pngHeight);
     drawAsciiArt(offscreenBuffer);
     p.saveCanvas(offscreenBuffer, window.density, "png");
+    offscreenBuffer.remove();
 
     setTimeout(() => {
       isDownloading = false;
@@ -330,27 +339,32 @@ function createSketch(p) {
     }, 1000);
   };
 
-  window.loadNewImage = function (imageName) {
+  window.loadNewImage = function (imageName, pInstance, isDefault = false, resolve) {
     p.loadImage(
       `img/${imageName}`,
       (newImg) => {
-        img = newImg;
-        img.resize(p.width, p.height);
+        window.img = newImg;
+        window.img.resize(p.width, p.height);
         if (p.isLooping()) {
           p.redraw();
         } else {
           p.loop();
           p.noLoop();
         }
+        if (resolve) resolve();
       },
-      (error) => console.error("Error loading image:", error)
+      (error) => {
+        console.error("Error loading image:", error);
+        if (resolve) resolve(); 
+      }
     );
   };
+
   window.createAndDownloadSVG = async function () {
     try {
       const width = window.gridColumns;
       const height = Math.floor(window.gridColumns * (p.height / p.width));
-      
+
       const uniqueChars = [...new Set(window.density)].join('');
       if (!window.loadedFont) {
         const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
@@ -358,50 +372,50 @@ function createSketch(p) {
       }
       const subsetFontData = await getSubsetFont(window.loadedFont, uniqueChars);
       const fontBase64 = fontToBase64(subsetFontData);
-      
+
       let colorClasses = "";
       colorMap.forEach((color, char) => {
         colorClasses += `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`;
       });
-  
-      const cellSize = 10; // Standard cell size
-      const fontSize = 9; // 90% of cell size
-  
+
+      const cellSize = 10; 
+      const fontSize = 9;
+
       let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
-  <defs>
-  <style>
-  @font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
-  ${colorClasses}
-  text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
-  </style>
-  </defs>
-  <rect width="100%" height="100%" fill="${getBgColor()}"/>
-  `;
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
+<defs>
+<style>
+@font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
+${colorClasses}
+text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
+</style>
+</defs>
+<rect width="100%" height="100%" fill="${getBgColor()}"/>
+`;
+
       const imgCopy = window.img.get();
       imgCopy.loadPixels();
-  
+
       for (let y = 0; y < height; y++) {
         let rowContent = "";
         let currentChar = "";
         let charPositions = [];
-  
+
         for (let x = 0; x < width; x++) {
           const imgX = Math.floor(x * (imgCopy.width / width));
           const imgY = Math.floor(y * (imgCopy.height / height));
           const w = Math.ceil(imgCopy.width / width);
           const h = Math.ceil(imgCopy.height / height);
-  
+
           const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
           const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
           const charIndex = window.invert
             ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
             : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
           const c = window.density.charAt(charIndex);
-  
+
           if (c !== currentChar || x === width - 1) {
-            if (currentChar) {
+            if (currentChar && charPositions.length > 0) {
               const xPositions = charPositions.map(pos => pos * cellSize).join(',');
               rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
             }
@@ -410,18 +424,18 @@ function createSketch(p) {
           } else {
             charPositions.push(x);
           }
-  
+
           if (x === width - 1 && c === currentChar) {
             const xPositions = charPositions.map(pos => pos * cellSize).join(',');
             rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
           }
         }
-  
+
         svgContent += `<text y="${(y + 0.5) * cellSize}">${rowContent}</text>`;
       }
-  
+
       svgContent += "</svg>";
-  
+
       const blob = new Blob([svgContent], { type: "image/svg+xml" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -435,5 +449,7 @@ function createSketch(p) {
       console.error("Error creating SVG:", error);
     }
   };
-  
 }
+
+p5Instance = new p5(createSketch);
+window.p5Instance = p5Instance;

@@ -11,8 +11,7 @@ export default defineConfig({
       },
     },
     assetsDir: "assets",
-    assetsInclude: ["README.md"],
-    assetsInclude: ["**/*.ttf"],
+    assetsInclude: ["README.md", "**/*.ttf"],
   },
   resolve: {
     alias: {
