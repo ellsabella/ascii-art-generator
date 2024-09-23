@@ -1,5 +1,6 @@
 export function initializeControls(p5Instance) {
-  console.log("Initializing controls");
+
+  window.customBgColor = window.customBgColor || [0, 0, 0];
 
   // File upload
   const imageUpload = document.getElementById("image-upload");
@@ -11,12 +12,18 @@ export function initializeControls(p5Instance) {
       }
     });
   }
-
-  // Reset to default image
   const resetButton = document.getElementById("reset-image");
   if (resetButton) {
     resetButton.addEventListener("click", function () {
-      loadNewImage(VITE_DEFAULT_IMAGE, p5Instance, true);
+      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || '/img/sleep.png';
+      loadNewImage(defaultImage, p5Instance, true);
+    });
+  }
+
+  const resetSettingsButton = document.getElementById("reset-settings");
+  if (resetSettingsButton) {
+    resetSettingsButton.addEventListener("click", function () {
+      resetAllSettings();
     });
   }
 
@@ -84,27 +91,34 @@ export function initializeControls(p5Instance) {
   }
 
   // Number of columns
-
   const columnsInput = document.getElementById("columns");
   const columnsValue = document.getElementById("columns-value");
   if (columnsInput && columnsValue) {
-    columnsInput.addEventListener("input", function (event) {
-      const value = parseInt(event.target.value);
+    const updateColumns = (value) => {
+      value = Math.min(300, Math.max(10, value));
+      columnsInput.value = value;
+      columnsValue.value = value;
       window.gridColumns = value;
-      columnsValue.textContent = value;
       window.updateSketch();
+    };
+
+    columnsInput.addEventListener("input", function (event) {
+      updateColumns(parseInt(event.target.value));
     });
+
+    columnsValue.addEventListener("change", function (event) {
+      updateColumns(parseInt(event.target.value));
+    });
+
+    updateColumns(150);
   }
 
   const downloadPngButton = document.getElementById("download-png");
   if (downloadPngButton) {
-    // Remove any existing event listeners
     downloadPngButton.removeEventListener("click", window.downloadPNG);
 
-    // Add the new event listener
     downloadPngButton.addEventListener("click", function (event) {
       event.preventDefault();
-      console.log("Download button clicked");
       if (typeof window.downloadPNG === "function") {
         window.downloadPNG();
       } else {
@@ -113,7 +127,6 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  // Color count radio buttons
   const colorCountRadios = document.querySelectorAll(
     'input[name="color-count"]'
   );
@@ -123,7 +136,6 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  // LERP radio buttons
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios.length > 0) {
     lerpRadios.forEach((elem) => {
@@ -134,57 +146,74 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  // Color sliders
-  const colorSliders = document.querySelectorAll(".color-slider");
-  if (colorSliders.length > 0) {
-    colorSliders.forEach((elem) => {
-      elem.addEventListener("input", function (event) {
-        let color = event.target.dataset.color;
-        let channel = event.target.dataset.channel;
-        let value = parseInt(event.target.value);
+  // SVG download button
+  const downloadSvgButton = document.getElementById("download-svg");
+  if (downloadSvgButton) {
+    downloadSvgButton.addEventListener("click", window.createAndDownloadSVG);
+  }
 
-        window[color + "Color"][["r", "g", "b"].indexOf(channel)] = value;
-        window.updateSketch();
-      });
+  const colorControls = document.querySelectorAll(".color-slider-container");
+  if (colorControls.length > 0) {
+    colorControls.forEach((container) => {
+      const slider = container.querySelector(".color-slider");
+      const input = container.querySelector(".color-value-input");
+
+      if (slider && input) {
+        const updateColor = (value) => {
+          slider.value = value;
+          input.value = value;
+          const color = slider.dataset.color;
+          const channel = slider.dataset.channel;
+          if (color === "customBg") {
+            window.customBgColor[["r", "g", "b"].indexOf(channel)] = parseInt(value);
+          } else {
+            window[color + "Color"][["r", "g", "b"].indexOf(channel)] = parseInt(value);
+          }
+          window.updateSketch();
+        };
+
+        slider.addEventListener("input", (event) => {
+          updateColor(event.target.value);
+        });
+
+        input.addEventListener("change", (event) => {
+          let value = parseInt(event.target.value);
+          value = Math.min(255, Math.max(0, value));
+          updateColor(value);
+        });
+        window.updateColorControl = updateColor;
+      }
     });
   }
 
-  // Background color radio buttons
   const bgColorRadios = document.querySelectorAll('input[name="bg-color"]');
   const customBgColorDiv = document.getElementById("custom-bg-color");
   if (bgColorRadios.length > 0) {
     bgColorRadios.forEach((elem) => {
       elem.addEventListener("change", function (event) {
         window.bgColorOption = event.target.value;
-        customBgColorDiv.style.display =
-          event.target.value === "custom" ? "block" : "none";
+        if (event.target.value === "custom") {
+          customBgColorDiv.style.display = "block";
+          initializeCustomBgColorSliders();
+        } else {
+          customBgColorDiv.style.display = "none";
+        }
         window.updateSketch();
       });
     });
   }
-
-  // Custom background color sliders
-  const bgColorSliders = document.querySelectorAll(
-    "#custom-bg-color .color-slider"
-  );
-  if (bgColorSliders.length > 0) {
-    bgColorSliders.forEach((elem) => {
-      elem.addEventListener("input", function (event) {
-        let channel = event.target.dataset.channel;
-        let value = parseInt(event.target.value);
-        window.customBgColor[["r", "g", "b"].indexOf(channel)] = value;
-        window.updateSketch();
-      });
-    });
+  if (!window.customBgColor) {
+    window.customBgColor = [0, 0, 0];
   }
 
   if (window.sketchReady) {
     updateColorControls();
   } else {
-    console.log("Sketch not ready, deferring initial update");
     window.addEventListener("sketchReady", updateColorControls);
   }
 }
+
+
 
 export function loadNewImage(
   source,
@@ -192,22 +221,15 @@ export function loadNewImage(
   isDefault = false,
   callback = null
 ) {
-  console.log(
-    `loadNewImage called with source: ${source}, isDefault: ${isDefault}`
-  );
 
   const loadImagePromise = new Promise((resolve, reject) => {
     if (isDefault || typeof source === "string") {
-      console.log(
-        `Loading image from path: ${isDefault ? source : `img/${source}`}`
-      );
       p5Instance.loadImage(
         isDefault ? source : `img/${source}`,
         (img) => resolve(img),
         (error) => reject(error)
       );
     } else {
-      console.log("Loading image from file upload");
       const reader = new FileReader();
       reader.onload = (e) => {
         p5Instance.loadImage(
@@ -223,18 +245,10 @@ export function loadNewImage(
 
   loadImagePromise
     .then((newImg) => {
-      console.log(
-        `Image loaded. Original dimensions: ${newImg.width}x${newImg.height}`
-      );
       window.img = newImg;
-      console.log(
-        `Image set to window.img: ${window.img.width}x${window.img.height}`
-      );
       if (callback) callback();
 
-      // Reinitialize the sketch
       if (typeof window.initializeSketch === "function") {
-        console.log("Reinitializing sketch with new image");
         window.initializeSketch();
       } else {
         console.warn(
@@ -279,6 +293,68 @@ function updateColorControls() {
   } else {
     console.log("Sketch not ready, skipping updateSketch");
   }
+}
+function initializeCustomBgColorSliders() {
+  if (!Array.isArray(window.customBgColor)) {
+    window.customBgColor = [0, 0, 0];
+  }
+
+  const bgColorControls = document.querySelectorAll("#custom-bg-color .color-slider-container");
+
+  if (bgColorControls.length > 0) {
+    bgColorControls.forEach((container) => {
+      const slider = container.querySelector(".color-slider");
+      const input = container.querySelector(".color-value-input");
+
+      if (slider && input) {
+        const channelIndex = ["r", "g", "b"].indexOf(slider.dataset.channel);
+        const value = window.customBgColor[channelIndex];
+        slider.value = value;
+        input.value = value;
+      }
+    });
+  }
+}
+
+function resetAllSettings() {
+  window.mP = 141;
+  window.cF = 0.55;
+  window.baseDensity = "RRBZ21";
+  window.zeroCount = 4;
+  window.density = window.baseDensity + "0".repeat(window.zeroCount);
+  window.colorCount = 2;
+  window.invert = true;
+  window.gridColumns = 150;
+  window.LERP = true;
+  window.startColor = [255, 255, 0];
+  window.middleColor = [255, 205, 0];
+  window.endColor = [255, 0, 255];
+  window.bgColorOption = "black";
+  window.customBgColor = [0, 0, 0];
+
+  document.getElementById("mp").value = window.mP;
+  document.getElementById("mp-value").value = window.mP;
+  document.getElementById("cf").value = window.cF * 100;
+  document.getElementById("cf-value").value = window.cF * 100;
+  document.getElementById("density-input").value = window.baseDensity;
+  document.getElementById("zero-slider").value = window.zeroCount;
+  document.getElementById("zero-value").textContent = window.zeroCount;
+  document.getElementById("columns").value = window.gridColumns;
+  document.getElementById("columns-value").value = window.gridColumns;
+  
+  document.getElementById("invert-true").checked = true;
+  document.getElementById("color-count-2").checked = true;
+  document.getElementById("lerp-true").checked = true;
+  document.getElementById("bg-black").checked = true;
+
+  updateColorControls("start", window.startColor);
+  updateColorControls("middle", window.middleColor);
+  updateColorControls("end", window.endColor);
+  updateColorControls("bg", window.customBgColor);
+
+  document.getElementById("custom-bg-color").style.display = "none";
+  window.updateDensity();
+  window.updateSketch();
 }
 
 document.addEventListener("DOMContentLoaded", () =>
