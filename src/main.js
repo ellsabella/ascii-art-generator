@@ -4,6 +4,7 @@ import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 
 let p5Instance;
+let animationFrameId = null;
 
 function createSketch(p) {
   let font;
@@ -29,26 +30,33 @@ function createSketch(p) {
   let isDownloading = false;
   let originalFont;
 
+  // Use requestAnimationFrame for smoother updates
   window.updateSketch = async function () {
-    try {
-      if (!window.img || typeof window.img.height === 'undefined' || typeof window.img.width === 'undefined') {
-        return;
-      }
-      if (!p || typeof p.floor !== 'function' || typeof p.width === 'undefined') {
-        return;
-      }
-      gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
-      gw = p.width / window.gridColumns;
-      p.textSize(gw * 0.9);
-      if (typeof updateColorMap === 'function') {
-        updateColorMap();
-      }
-      if (typeof drawAsciiArt === 'function') {
-        drawAsciiArt();
-      }
-      p.redraw();
-    } catch (error) {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
     }
+    animationFrameId = requestAnimationFrame(() => {
+      try {
+        if (!window.img || typeof window.img.height === "undefined" || typeof window.img.width === "undefined") {
+          return;
+        }
+        if (!p || typeof p.floor !== "function" || typeof p.width === "undefined") {
+          return;
+        }
+        gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
+        gw = p.width / window.gridColumns;
+        p.textSize(gw * 0.9);
+        if (typeof updateColorMap === "function") {
+          updateColorMap();
+        }
+        if (typeof drawAsciiArt === "function") {
+          drawAsciiArt();
+        }
+        p.redraw();
+      } catch (error) {
+        console.error("Error in updateSketch:", error);
+      }
+    });
   };
 
   p.preload = function () {
@@ -74,7 +82,7 @@ function createSketch(p) {
 
     let canvas = p.createCanvas(100, 100);
     canvas.parent("canvas-container");
-    const ctx = canvas.elt.getContext('2d', { willReadFrequently: true });
+    const ctx = canvas.elt.getContext("2d", { willReadFrequently: true });
     if (!ctx) {
       console.warn("Failed to set 'willReadFrequently' on canvas context.");
     }
@@ -85,12 +93,14 @@ function createSketch(p) {
 
     window.p5Instance = p;
 
-    window.defaultImageLoaded.then(() => {
-      console.log("Default image loaded, initializing sketch");
-      initializeSketch();
-    }).catch((error) => {
-      console.error("Error loading default image:", error);
-    });
+    window.defaultImageLoaded
+      .then(() => {
+        console.log("Default image loaded, initializing sketch");
+        initializeSketch();
+      })
+      .catch((error) => {
+        console.error("Error loading default image:", error);
+      });
   };
 
   function initializeSketch() {
@@ -174,16 +184,9 @@ function createSketch(p) {
       } else if (window.colorCount === 2) {
         if (window.LERP) {
           const t = i / (totalChars - 1);
-          col = p.lerpColor(
-            p.color(...window.startColor),
-            p.color(...window.endColor),
-            t
-          );
+          col = p.lerpColor(p.color(...window.startColor), p.color(...window.endColor), t);
         } else {
-          col =
-            i < totalChars / 2
-              ? p.color(...window.startColor)
-              : p.color(...window.endColor);
+          col = i < totalChars / 2 ? p.color(...window.startColor) : p.color(...window.endColor);
         }
       } else {
         const firstThird = Math.floor(totalChars / 3);
@@ -277,11 +280,7 @@ function createSketch(p) {
     for (let i = x; i < endX; i++) {
       for (let j = y; j < endY; j++) {
         const idx = (i + j * imgPixels.width) * 4;
-        total +=
-          (imgPixels.pixels[idx] +
-            imgPixels.pixels[idx + 1] +
-            imgPixels.pixels[idx + 2]) /
-          3;
+        total += (imgPixels.pixels[idx] + imgPixels.pixels[idx + 1] + imgPixels.pixels[idx + 2]) / 3;
       }
     }
     return total / ((endX - x) * (endY - y));
@@ -355,7 +354,7 @@ function createSketch(p) {
       },
       (error) => {
         console.error("Error loading image:", error);
-        if (resolve) resolve(); 
+        if (resolve) resolve();
       }
     );
   };
@@ -365,7 +364,7 @@ function createSketch(p) {
       const width = window.gridColumns;
       const height = Math.floor(window.gridColumns * (p.height / p.width));
 
-      const uniqueChars = [...new Set(window.density)].join('');
+      const uniqueChars = [...new Set(window.density)].join("");
       if (!window.loadedFont) {
         const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
         window.loadedFont = await loadFont(defaultFontPath);
@@ -378,20 +377,19 @@ function createSketch(p) {
         colorClasses += `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`;
       });
 
-      const cellSize = 10; 
+      const cellSize = 10;
       const fontSize = 9;
 
       let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
-<defs>
-<style>
-@font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
-${colorClasses}
-text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
-</style>
-</defs>
-<rect width="100%" height="100%" fill="${getBgColor()}"/>
-`;
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
+        <defs>
+          <style>
+            @font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
+            ${colorClasses}
+            text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
+          </style>
+        </defs>
+        <rect width="100%" height="100%" fill="${getBgColor()}"/>`;
 
       const imgCopy = window.img.get();
       imgCopy.loadPixels();
@@ -416,8 +414,10 @@ text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baselin
 
           if (c !== currentChar || x === width - 1) {
             if (currentChar && charPositions.length > 0) {
-              const xPositions = charPositions.map(pos => pos * cellSize).join(',');
-              rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
+              const xPositions = charPositions.map((pos) => pos * cellSize).join(",");
+              rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
+                charPositions.length
+              )}</tspan>`;
             }
             currentChar = c;
             charPositions = [x];
@@ -426,8 +426,10 @@ text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baselin
           }
 
           if (x === width - 1 && c === currentChar) {
-            const xPositions = charPositions.map(pos => pos * cellSize).join(',');
-            rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(charPositions.length)}</tspan>`;
+            const xPositions = charPositions.map((pos) => pos * cellSize).join(",");
+            rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
+              charPositions.length
+            )}</tspan>`;
           }
         }
 

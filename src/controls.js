@@ -1,82 +1,90 @@
-export function initializeControls(p5Instance) {
+// Debounce function to prevent rapid firing of events
+function debounce(func, delay) {
+  let timeout;
+  return function (...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), delay);
+  };
+}
 
+export function initializeControls(p5Instance) {
   window.customBgColor = window.customBgColor || [0, 0, 0];
 
   // File upload
   const imageUpload = document.getElementById("image-upload");
   if (imageUpload) {
-    imageUpload.addEventListener("change", function (event) {
-      const file = event.target.files[0];
-      if (file) {
-        loadNewImage(file, p5Instance);
-      }
-    });
+    imageUpload.addEventListener(
+      "change",
+      function (event) {
+        const file = event.target.files[0];
+        if (file) {
+          loadNewImage(file, p5Instance);
+        }
+      },
+      { passive: true } // Passive event listener for better performance
+    );
   }
+
+  // Reset image
   const resetButton = document.getElementById("reset-image");
   if (resetButton) {
     resetButton.addEventListener("click", function () {
-      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || '/img/sleep.png';
+      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sleep.png";
       loadNewImage(defaultImage, p5Instance, true);
     });
   }
 
+  // Reset settings button
   const resetSettingsButton = document.getElementById("reset-settings");
   if (resetSettingsButton) {
-    resetSettingsButton.addEventListener("click", function () {
-      resetAllSettings();
-    });
+    resetSettingsButton.addEventListener("click", resetAllSettings);
   }
 
-  // MP slider and input
+  // Debounced MP slider and input
   const mpSlider = document.getElementById("mp");
   const mpValue = document.getElementById("mp-value");
   if (mpSlider && mpValue) {
-    mpSlider.addEventListener("input", function (event) {
-      window.mP = parseInt(event.target.value);
+    const updateMP = debounce(() => {
+      window.mP = parseInt(mpSlider.value, 10);
       mpValue.value = window.mP;
       window.updateSketch();
-    });
+    }, 200); // Debounce for 200ms
 
-    mpValue.addEventListener("change", function (event) {
-      window.mP = parseInt(event.target.value);
-      mpSlider.value = window.mP;
-      window.updateSketch();
-    });
+    mpSlider.addEventListener("input", updateMP);
+    mpValue.addEventListener("change", updateMP);
   }
 
-  // CF slider and input
+  // CF slider and input with debouncing
   const cfSlider = document.getElementById("cf");
   const cfValue = document.getElementById("cf-value");
   if (cfSlider && cfValue) {
-    cfSlider.addEventListener("input", function (event) {
-      window.cF = parseFloat(event.target.value) / 100;
+    const updateCF = debounce(() => {
+      window.cF = parseFloat(cfSlider.value) / 100;
       cfValue.value = (window.cF * 100).toFixed(0);
       window.updateSketch();
-    });
+    }, 200);
 
-    cfValue.addEventListener("change", function (event) {
-      window.cF = parseInt(event.target.value) / 100;
-      cfSlider.value = (window.cF * 100).toFixed(0);
-      window.updateSketch();
-    });
+    cfSlider.addEventListener("input", updateCF);
+    cfValue.addEventListener("change", updateCF);
   }
 
-  // Density characters
+  // Density characters input
   const densityInput = document.getElementById("density-input");
   if (densityInput) {
-    densityInput.addEventListener("change", function (event) {
-      window.updateDensity();
-    });
+    densityInput.addEventListener("change", window.updateDensity);
   }
 
-  // Zero slider
+  // Zero slider input
   const zeroSlider = document.getElementById("zero-slider");
   const zeroValue = document.getElementById("zero-value");
   if (zeroSlider && zeroValue) {
-    zeroSlider.addEventListener("input", function () {
-      zeroValue.textContent = this.value;
-      window.updateDensity();
-    });
+    zeroSlider.addEventListener(
+      "input",
+      debounce(function () {
+        zeroValue.textContent = zeroSlider.value;
+        window.updateDensity();
+      }, 200)
+    );
   }
 
   // Invert radio buttons
@@ -90,33 +98,32 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  // Number of columns
+  // Columns input with debounce
   const columnsInput = document.getElementById("columns");
   const columnsValue = document.getElementById("columns-value");
   if (columnsInput && columnsValue) {
-    const updateColumns = (value) => {
+    const updateColumns = debounce((value) => {
       value = Math.min(300, Math.max(10, value));
       columnsInput.value = value;
       columnsValue.value = value;
       window.gridColumns = value;
       window.updateSketch();
-    };
+    }, 200);
 
     columnsInput.addEventListener("input", function (event) {
-      updateColumns(parseInt(event.target.value));
+      updateColumns(parseInt(event.target.value, 10));
     });
 
     columnsValue.addEventListener("change", function (event) {
-      updateColumns(parseInt(event.target.value));
+      updateColumns(parseInt(event.target.value, 10));
     });
 
     updateColumns(150);
   }
 
+  // Download PNG button
   const downloadPngButton = document.getElementById("download-png");
   if (downloadPngButton) {
-    downloadPngButton.removeEventListener("click", window.downloadPNG);
-
     downloadPngButton.addEventListener("click", function (event) {
       event.preventDefault();
       if (typeof window.downloadPNG === "function") {
@@ -127,15 +134,15 @@ export function initializeControls(p5Instance) {
     });
   }
 
-  const colorCountRadios = document.querySelectorAll(
-    'input[name="color-count"]'
-  );
+  // Color count radio buttons
+  const colorCountRadios = document.querySelectorAll('input[name="color-count"]');
   if (colorCountRadios.length > 0) {
     colorCountRadios.forEach((elem) => {
       elem.addEventListener("change", updateColorControls);
     });
   }
 
+  // LERP radio buttons
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios.length > 0) {
     lerpRadios.forEach((elem) => {
@@ -152,6 +159,7 @@ export function initializeControls(p5Instance) {
     downloadSvgButton.addEventListener("click", window.createAndDownloadSVG);
   }
 
+  // Color sliders
   const colorControls = document.querySelectorAll(".color-slider-container");
   if (colorControls.length > 0) {
     colorControls.forEach((container) => {
@@ -159,33 +167,35 @@ export function initializeControls(p5Instance) {
       const input = container.querySelector(".color-value-input");
 
       if (slider && input) {
-        const updateColor = (value) => {
+        const updateColor = debounce((value) => {
           slider.value = value;
           input.value = value;
           const color = slider.dataset.color;
           const channel = slider.dataset.channel;
           if (color === "customBg") {
-            window.customBgColor[["r", "g", "b"].indexOf(channel)] = parseInt(value);
+            window.customBgColor[["r", "g", "b"].indexOf(channel)] = parseInt(value, 10);
           } else {
-            window[color + "Color"][["r", "g", "b"].indexOf(channel)] = parseInt(value);
+            window[color + "Color"][["r", "g", "b"].indexOf(channel)] = parseInt(value, 10);
           }
           window.updateSketch();
-        };
+        }, 200);
 
         slider.addEventListener("input", (event) => {
           updateColor(event.target.value);
         });
 
         input.addEventListener("change", (event) => {
-          let value = parseInt(event.target.value);
+          let value = parseInt(event.target.value, 10);
           value = Math.min(255, Math.max(0, value));
           updateColor(value);
         });
+
         window.updateColorControl = updateColor;
       }
     });
   }
 
+  // Background color radio buttons and custom BG sliders
   const bgColorRadios = document.querySelectorAll('input[name="bg-color"]');
   const customBgColorDiv = document.getElementById("custom-bg-color");
   if (bgColorRadios.length > 0) {
@@ -202,6 +212,8 @@ export function initializeControls(p5Instance) {
       });
     });
   }
+
+  // Ensure custom background color is initialized
   if (!window.customBgColor) {
     window.customBgColor = [0, 0, 0];
   }
@@ -213,32 +225,16 @@ export function initializeControls(p5Instance) {
   }
 }
 
-
-
-export function loadNewImage(
-  source,
-  p5Instance,
-  isDefault = false,
-  callback = null
-) {
-
+export function loadNewImage(source, p5Instance, isDefault = false, callback = null) {
   const loadImagePromise = new Promise((resolve, reject) => {
     if (isDefault || typeof source === "string") {
-      p5Instance.loadImage(
-        isDefault ? source : `img/${source}`,
-        (img) => resolve(img),
-        (error) => reject(error)
-      );
+      p5Instance.loadImage(isDefault ? source : `img/${source}`, resolve, reject);
     } else {
       const reader = new FileReader();
       reader.onload = (e) => {
-        p5Instance.loadImage(
-          e.target.result,
-          (img) => resolve(img),
-          (error) => reject(error)
-        );
+        p5Instance.loadImage(e.target.result, resolve, reject);
       };
-      reader.onerror = (error) => reject(error);
+      reader.onerror = reject;
       reader.readAsDataURL(source);
     }
   });
@@ -251,21 +247,17 @@ export function loadNewImage(
       if (typeof window.initializeSketch === "function") {
         window.initializeSketch();
       } else {
-        console.warn(
-          "initializeSketch function not found. Sketch may not update correctly."
-        );
+        console.warn("initializeSketch function not found. Sketch may not update correctly.");
       }
     })
     .catch((error) => console.error("Error loading image:", error));
 }
 
 function updateColorControls() {
-  const colorCountRadio = document.querySelector(
-    'input[name="color-count"]:checked'
-  );
+  const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
   if (!colorCountRadio) return;
 
-  const colorCount = parseInt(colorCountRadio.value);
+  const colorCount = parseInt(colorCountRadio.value, 10);
   const lerpControl = document.getElementById("lerp-control");
   const middleColor = document.getElementById("middle-color");
   const endColor = document.getElementById("end-color");
@@ -294,6 +286,7 @@ function updateColorControls() {
     console.log("Sketch not ready, skipping updateSketch");
   }
 }
+
 function initializeCustomBgColorSliders() {
   if (!Array.isArray(window.customBgColor)) {
     window.customBgColor = [0, 0, 0];
@@ -341,7 +334,7 @@ function resetAllSettings() {
   document.getElementById("zero-value").textContent = window.zeroCount;
   document.getElementById("columns").value = window.gridColumns;
   document.getElementById("columns-value").value = window.gridColumns;
-  
+
   document.getElementById("invert-true").checked = true;
   document.getElementById("color-count-2").checked = true;
   document.getElementById("lerp-true").checked = true;
@@ -357,6 +350,4 @@ function resetAllSettings() {
   window.updateSketch();
 }
 
-document.addEventListener("DOMContentLoaded", () =>
-  initializeControls(window.p5Instance)
-);
+document.addEventListener("DOMContentLoaded", () => initializeControls(window.p5Instance));
