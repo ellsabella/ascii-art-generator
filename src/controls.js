@@ -9,7 +9,6 @@ function debounce(func, delay) {
 
 export function initializeControls(p5Instance) {
   window.customBgColor = window.customBgColor || [0, 0, 0];
-
   // File upload
   const imageUpload = document.getElementById("image-upload");
   if (imageUpload) {
@@ -86,6 +85,19 @@ export function initializeControls(p5Instance) {
       }, 200)
     );
   }
+
+    // Space slider input
+    const spaceSlider = document.getElementById("space-slider");
+    const spaceValue = document.getElementById("space-value");
+    if (spaceSlider && spaceValue) {
+      spaceSlider.addEventListener(
+        "input",
+        debounce(function () {
+          spaceValue.textContent = spaceSlider.value;
+          window.updateDensity();
+        }, 200)
+      );
+    }
 
   // Invert radio buttons
   const invertRadios = document.querySelectorAll('input[name="invert"]');
@@ -314,7 +326,8 @@ function resetAllSettings() {
   window.cF = 0.55;
   window.baseDensity = "RRBZ21";
   window.zeroCount = 4;
-  window.density = window.baseDensity + "0".repeat(window.zeroCount);
+  window.spaceValue = 0;
+  window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
   window.colorCount = 2;
   window.invert = true;
   window.gridColumns = 150;
@@ -332,6 +345,8 @@ function resetAllSettings() {
   document.getElementById("density-input").value = window.baseDensity;
   document.getElementById("zero-slider").value = window.zeroCount;
   document.getElementById("zero-value").textContent = window.zeroCount;
+  document.getElementById("space-slider").value = window.spaceCount;
+  document.getElementById("space-value").textContent = window.spaceCount;
   document.getElementById("columns").value = window.gridColumns;
   document.getElementById("columns-value").value = window.gridColumns;
 
