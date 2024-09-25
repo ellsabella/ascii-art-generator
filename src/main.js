@@ -12,7 +12,8 @@ function createSketch(p) {
 
   window.baseDensity = "RRBZ21";
   window.zeroCount = 4;
-  window.density = window.baseDensity + "0".repeat(window.zeroCount);
+  window.spaceCount = 0;
+  window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
   window.colorCount = 2;
   window.invert = true;
   window.gridColumns = 150;
@@ -28,9 +29,7 @@ function createSketch(p) {
 
   let colorMap;
   let isDownloading = false;
-  let originalFont;
 
-  // Use requestAnimationFrame for smoother updates
   window.updateSketch = async function () {
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
@@ -175,7 +174,10 @@ function createSketch(p) {
 
   function updateColorMap() {
     colorMap = new Map();
-    const totalChars = window.density.length;
+
+    const densityWithoutSpaces = window.density.replace(/\s/g, '');
+    const totalChars = densityWithoutSpaces.length;
+
     for (let i = 0; i < totalChars; i++) {
       const char = window.density.charAt(i);
       let col;
@@ -297,7 +299,8 @@ function createSketch(p) {
   window.updateDensity = function () {
     window.baseDensity = document.getElementById("density-input").value;
     window.zeroCount = parseInt(document.getElementById("zero-slider").value, 10);
-    window.density = window.baseDensity + "0".repeat(window.zeroCount);
+    window.spaceCount = parseInt(document.getElementById("space-slider").value, 10);
+    window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
     window.updateSketch();
   };
 
@@ -363,7 +366,7 @@ function createSketch(p) {
     try {
       const width = window.gridColumns;
       const height = Math.floor(window.gridColumns * (p.height / p.width));
-
+  
       const uniqueChars = [...new Set(window.density)].join("");
       if (!window.loadedFont) {
         const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
@@ -371,73 +374,107 @@ function createSketch(p) {
       }
       const subsetFontData = await getSubsetFont(window.loadedFont, uniqueChars);
       const fontBase64 = fontToBase64(subsetFontData);
-
-      let colorClasses = "";
-      colorMap.forEach((color, char) => {
-        colorClasses += `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`;
-      });
-
+  
+      const isSingleColor = window.colorCount === 1;
+      let colorStyle = "";
+      let singleColor = "";
+  
+      if (isSingleColor) {
+        singleColor = `rgb(${window.startColor.join(',')})`;
+        colorStyle = `text{fill:${singleColor}}`;
+      } else {
+        colorStyle = Array.from(colorMap).map(([char, color]) => 
+          `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`)
+          .join('');
+      }
+  
       const cellSize = 10;
-      const fontSize = 9;
-
+      const fontSize = cellSize * 0.9;
+  
       let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width * cellSize} ${height * cellSize}">
         <defs>
           <style>
             @font-face{font-family:AsciiArtFont;src:url(${fontBase64}) format('truetype')}
-            ${colorClasses}
-            text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central}
+            ${colorStyle}
+            text{font-family:AsciiArtFont,monospace;font-size:${fontSize}px;dominant-baseline:central;text-anchor:middle}
           </style>
         </defs>
         <rect width="100%" height="100%" fill="${getBgColor()}"/>`;
-
+  
       const imgCopy = window.img.get();
       imgCopy.loadPixels();
-
+  
       for (let y = 0; y < height; y++) {
         let rowContent = "";
-        let currentChar = "";
-        let charPositions = [];
-
-        for (let x = 0; x < width; x++) {
-          const imgX = Math.floor(x * (imgCopy.width / width));
-          const imgY = Math.floor(y * (imgCopy.height / height));
-          const w = Math.ceil(imgCopy.width / width);
-          const h = Math.ceil(imgCopy.height / height);
-
-          const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
-          const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-          const charIndex = window.invert
-            ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-            : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-          const c = window.density.charAt(charIndex);
-
-          if (c !== currentChar || x === width - 1) {
-            if (currentChar && charPositions.length > 0) {
-              const xPositions = charPositions.map((pos) => pos * cellSize).join(",");
+  
+        if (isSingleColor) {
+          let rowChars = "";
+          let xPositions = [];
+          for (let x = 0; x < width; x++) {
+            const imgX = Math.floor(x * (imgCopy.width / width));
+            const imgY = Math.floor(y * (imgCopy.height / height));
+            const w = Math.ceil(imgCopy.width / width);
+            const h = Math.ceil(imgCopy.height / height);
+  
+            const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
+            const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+            const charIndex = window.invert
+              ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
+              : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+            const char = window.density.charAt(charIndex);
+            
+            if (char !== ' ') {
+              rowChars += char;
+              xPositions.push((x + 0.5) * cellSize);
+            }
+          }
+          rowContent = `<tspan x="${xPositions.join(',')}">${rowChars}</tspan>`;
+        } else {
+          let currentChar = "";
+          let charPositions = [];
+  
+          for (let x = 0; x < width; x++) {
+            const imgX = Math.floor(x * (imgCopy.width / width));
+            const imgY = Math.floor(y * (imgCopy.height / height));
+            const w = Math.ceil(imgCopy.width / width);
+            const h = Math.ceil(imgCopy.height / height);
+  
+            const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
+            const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+            const charIndex = window.invert
+              ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
+              : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+            const c = window.density.charAt(charIndex);
+  
+            if (c !== currentChar || x === width - 1) {
+              if (currentChar && charPositions.length > 0 && currentChar !== ' ') {
+                const xPositions = charPositions.map((pos) => (pos + 0.5) * cellSize).join(",");
+                rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
+                  charPositions.length
+                )}</tspan>`;
+              }
+              currentChar = c;
+              charPositions = [x];
+            } else {
+              charPositions.push(x);
+            }
+  
+            if (x === width - 1 && c === currentChar && c !== ' ') {
+              const xPositions = charPositions.map((pos) => (pos + 0.5) * cellSize).join(",");
               rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
                 charPositions.length
               )}</tspan>`;
             }
-            currentChar = c;
-            charPositions = [x];
-          } else {
-            charPositions.push(x);
-          }
-
-          if (x === width - 1 && c === currentChar) {
-            const xPositions = charPositions.map((pos) => pos * cellSize).join(",");
-            rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
-              charPositions.length
-            )}</tspan>`;
           }
         }
-
-        svgContent += `<text y="${(y + 0.5) * cellSize}">${rowContent}</text>`;
+  
+        const yPos = (y + 0.5) * cellSize;
+        svgContent += `<text y="${yPos}">${rowContent}</text>`;
       }
-
+  
       svgContent += "</svg>";
-
+  
       const blob = new Blob([svgContent], { type: "image/svg+xml" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
