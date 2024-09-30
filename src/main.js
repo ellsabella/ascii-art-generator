@@ -2,14 +2,17 @@ import p5 from "p5";
 import "./styles.css";
 import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
+import { updateColorMap, kMeansColorClustering, hslToRgb } from "./colorUtils.js";
 
 let p5Instance;
 let animationFrameId = null;
+let colorExtractionWorker = new Worker(new URL('./color-extraction-worker.js', import.meta.url));
+let gridCellColors = null;
 
 function createSketch(p) {
   let font;
   let gridRows, gw, ar, windowAR, offscreen, highResImg;
-
+  window.useImageColors = false;
   window.baseDensity = "RRBZ21";
   window.zeroCount = 4;
   window.spaceCount = 0;
@@ -21,40 +24,82 @@ function createSketch(p) {
   window.cF = 0.55;
   window.mP = 141;
   window.LERP = true;
-  window.startColor = [255, 255, 0];
-  window.middleColor = [255, 205, 0];
-  window.endColor = [255, 0, 255];
+  window.startColor = [30, 100, 100, 1];  // HSLA
+  window.middleColor = [45, 100, 50, 1]; // HSLA
+  window.endColor = [0, 0, 33, 1];   // HSLA
   window.bgColorOption = "black";
-  window.customBgColor = [0, 0, 0];
+  window.customBgColor = [0, 0, 0, 1];   // HSLA
 
   let colorMap;
   let isDownloading = false;
 
-  window.updateSketch = async function () {
+  function updateColumns(newColumns) {
+    window.gridColumns = newColumns;
+    
+    if (window.useImageColors) {
+      gridCellColors = null;
+    }
+    
+    window.updateSketch();
+  }
+  
+  window.updateColumns = updateColumns; 
+
+  window.updateSketch = function () {
+    
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
     }
+    
     animationFrameId = requestAnimationFrame(() => {
       try {
         if (!window.img || typeof window.img.height === "undefined" || typeof window.img.width === "undefined") {
           return;
         }
+        
         if (!p || typeof p.floor !== "function" || typeof p.width === "undefined") {
           return;
         }
+
         gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
         gw = p.width / window.gridColumns;
         p.textSize(gw * 0.9);
-        if (typeof updateColorMap === "function") {
-          updateColorMap();
+        
+        if (window.useImageColors && !gridCellColors) {
+          window.extractColors();
+          return;
         }
+        
+        if (!window.useImageColors) {
+          colorMap = updateColorMap(p, window);
+        } else {
+          console.log("Using image colors");
+        }
+        
+        const bgColor = getBgColor();
+        p.background(bgColor);
+        
         if (typeof drawAsciiArt === "function") {
           drawAsciiArt();
+        } else {
+          console.log("drawAsciiArt function not found");
         }
+        
         p.redraw();
       } catch (error) {
         console.error("Error in updateSketch:", error);
       }
+    });
+  };
+  
+  window.extractColors = function() {
+    if (!window.img) return;
+  
+    const imgData = window.img.canvas.getContext('2d').getImageData(0, 0, window.img.width, window.img.height);
+    colorExtractionWorker.postMessage({
+      imageData: imgData,
+      gridColumns: window.gridColumns,
+      gridRows: gridRows
     });
   };
 
@@ -94,12 +139,12 @@ function createSketch(p) {
 
     window.defaultImageLoaded
       .then(() => {
-        console.log("Default image loaded, initializing sketch");
         initializeSketch();
       })
       .catch((error) => {
         console.error("Error loading default image:", error);
       });
+      p.redraw();
   };
 
   function initializeSketch() {
@@ -117,7 +162,7 @@ function createSketch(p) {
     p.textAlign(p.CENTER, p.CENTER);
 
     createOffscreenBuffer();
-    updateColorMap();
+    updateColorMap(p, window);
 
     window.sketchReady = true;
     window.dispatchEvent(new Event("sketchReady"));
@@ -172,39 +217,6 @@ function createSketch(p) {
     }
   }
 
-  function updateColorMap() {
-    colorMap = new Map();
-
-    const densityWithoutSpaces = window.density.replace(/\s/g, '');
-    const totalChars = densityWithoutSpaces.length;
-
-    for (let i = 0; i < totalChars; i++) {
-      const char = window.density.charAt(i);
-      let col;
-      if (window.colorCount === 1) {
-        col = p.color(...window.startColor);
-      } else if (window.colorCount === 2) {
-        if (window.LERP) {
-          const t = i / (totalChars - 1);
-          col = p.lerpColor(p.color(...window.startColor), p.color(...window.endColor), t);
-        } else {
-          col = i < totalChars / 2 ? p.color(...window.startColor) : p.color(...window.endColor);
-        }
-      } else {
-        const firstThird = Math.floor(totalChars / 3);
-        const secondThird = Math.floor((2 * totalChars) / 3);
-        if (i < firstThird) {
-          col = p.color(...window.startColor);
-        } else if (i < secondThird) {
-          col = p.color(...window.middleColor);
-        } else {
-          col = p.color(...window.endColor);
-        }
-      }
-      colorMap.set(char, col);
-    }
-  }
-
   function drawAsciiArt(graphics = null) {
     const isOffscreen = graphics !== null;
     const canvas = isOffscreen ? graphics : p;
@@ -213,14 +225,22 @@ function createSketch(p) {
     canvas.background(bgColor);
     canvas.textFont(font);
 
-    const scaleX = canvas.width / p.width;
-    const scaleY = canvas.height / p.height;
-
-    const scaledGridColumns = Math.floor(window.gridColumns * scaleX);
-    const scaledGridRows = Math.floor(gridRows * scaleY);
+    const useOriginalGrid = window.useImageColors && gridCellColors;
+    
+    let scaledGridColumns, scaledGridRows;
+    if (useOriginalGrid) {
+      scaledGridColumns = window.gridColumns;
+      scaledGridRows = gridRows;
+    } else {
+      const scaleX = canvas.width / p.width;
+      const scaleY = canvas.height / p.height;
+      scaledGridColumns = Math.floor(window.gridColumns * scaleX);
+      scaledGridRows = Math.floor(gridRows * scaleY);
+    }
+  
     const cellWidth = canvas.width / scaledGridColumns;
     const cellHeight = canvas.height / scaledGridRows;
-
+  
     const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
     canvas.textSize(fontSize);
     canvas.textAlign(p.CENTER, p.CENTER);
@@ -232,22 +252,39 @@ function createSketch(p) {
         const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
         const w = Math.ceil(imgToUse.width / scaledGridColumns);
         const h = Math.ceil(imgToUse.height / scaledGridRows);
-
+  
         const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
         const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
         const charIndex = window.invert
           ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
           : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
         const c = window.density.charAt(charIndex);
-
-        const charColor = colorMap.get(c);
-
+  
+        let charColor;
+        if (window.useImageColors && gridCellColors) {
+          const colorIndex = y * scaledGridColumns + x;
+          if (colorIndex < gridCellColors.length) {
+            const colorArray = gridCellColors[colorIndex];
+            if (Array.isArray(colorArray) && colorArray.length === 3) {
+              charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
+            } else {
+              console.warn("Invalid color data at index", colorIndex, colorArray);
+              charColor = p.color(255);
+            }
+          } else {
+            console.error("Color index out of bounds:", colorIndex, "Max index:", gridCellColors.length - 1);
+            charColor = p.color(255);
+          }
+        } else {
+          charColor = colorMap.get(c);
+        }
+  
         if (charColor) {
-          canvas.fill(charColor.levels[0], charColor.levels[1], charColor.levels[2]);
+          canvas.fill(charColor);
         } else {
           canvas.fill(255);
         }
-
+  
         const xPos = (x + 0.5) * cellWidth;
         const yPos = (y + 0.5) * cellHeight;
         canvas.text(c, xPos, yPos);
@@ -258,20 +295,22 @@ function createSketch(p) {
   function getBgColor() {
     switch (window.bgColorOption) {
       case "black":
-        return "black";
+        return "rgb(0, 0, 0)";
       case "white":
-        return "white";
+        return "rgb(255, 255, 255)";
       case "transparent":
-        return "transparent";
+        return "rgba(0, 0, 0, 0)";
       case "custom":
-        if (Array.isArray(window.customBgColor)) {
-          return `rgb(${window.customBgColor.join(",")})`;
+        if (Array.isArray(window.customBgColor) && window.customBgColor.length >= 3) {
+          const [h, s, l, a = 1] = window.customBgColor;
+          const [r, g, b] = hslToRgb(h, s, l);
+          return `rgba(${r}, ${g}, ${b}, ${a})`;
         } else {
           console.error("customBgColor is not properly initialized");
-          return "black";
+          return "rgb(0, 0, 0)";
         }
       default:
-        return "black";
+        return "rgb(0, 0, 0)";
     }
   }
 
@@ -328,6 +367,7 @@ function createSketch(p) {
     }
     const pngHeight = Math.round(pngWidth / (p.width / p.height));
     const offscreenBuffer = p.createGraphics(pngWidth, pngHeight);
+
     drawAsciiArt(offscreenBuffer);
     p.saveCanvas(offscreenBuffer, window.density, "png");
     offscreenBuffer.remove();
@@ -347,6 +387,7 @@ function createSketch(p) {
       (newImg) => {
         window.img = newImg;
         window.img.resize(p.width, p.height);
+        
         if (p.isLooping()) {
           p.redraw();
         } else {
@@ -363,9 +404,34 @@ function createSketch(p) {
   };
 
   window.createAndDownloadSVG = async function () {
+    if (isDownloading) {
+      console.log("Download already in progress");
+      return;
+    }
+  
+    isDownloading = true;
+    const downloadButton = document.getElementById("download-svg");
+    if (downloadButton) {
+      downloadButton.disabled = true;
+    }
+  
+    console.log("Preparing SVG download...");
+  
     try {
       const width = window.gridColumns;
       const height = Math.floor(window.gridColumns * (p.height / p.width));
+  
+      // Ensure we have the latest color data from the web worker
+      if (window.useImageColors && (!gridCellColors || gridCellColors.length !== width * height)) {
+        await new Promise((resolve) => {
+          window.extractColors();
+          colorExtractionWorker.onmessage = function(e) {
+            gridCellColors = e.data;
+            console.log("Color extraction completed. Total colors:", gridCellColors.length);
+            resolve();
+          };
+        });
+      }
   
       const uniqueChars = [...new Set(window.density)].join("");
       if (!window.loadedFont) {
@@ -375,17 +441,33 @@ function createSketch(p) {
       const subsetFontData = await getSubsetFont(window.loadedFont, uniqueChars);
       const fontBase64 = fontToBase64(subsetFontData);
   
-      const isSingleColor = window.colorCount === 1;
       let colorStyle = "";
-      let singleColor = "";
+      let colorMap;
+      let isSingleColor = false;
   
-      if (isSingleColor) {
-        singleColor = `rgb(${window.startColor.join(',')})`;
-        colorStyle = `text{fill:${singleColor}}`;
+      if (window.useImageColors && gridCellColors) {
+
+        colorMap = new Map();
+        gridCellColors.forEach((color, index) => {
+          const char = window.density[index % window.density.length];
+          colorMap.set(char, p.color(color[0], color[1], color[2]));
+        });
+        colorStyle = Array.from(new Set(gridCellColors.map(color => color.join(',')))).map(color => {
+          const [r, g, b] = color.split(',').map(Number);
+          return `.c${r}_${g}_${b}{fill:rgb(${r},${g},${b})}`;
+        }).join('');
       } else {
-        colorStyle = Array.from(colorMap).map(([char, color]) => 
-          `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`)
-          .join('');
+
+        isSingleColor = window.colorCount === 1;
+        if (isSingleColor) {
+          const singleColor = `rgb(${hslToRgb(...window.startColor.slice(0, 3)).join(',')})`;
+          colorStyle = `text{fill:${singleColor}}`;
+        } else {
+          colorMap = updateColorMap(p, window);
+          colorStyle = Array.from(colorMap).map(([char, color]) => 
+            `.c${char}{fill:rgb(${color.levels[0]},${color.levels[1]},${color.levels[2]})}`)
+            .join('');
+        }
       }
   
       const cellSize = 10;
@@ -407,70 +489,34 @@ function createSketch(p) {
   
       for (let y = 0; y < height; y++) {
         let rowContent = "";
+        for (let x = 0; x < width; x++) {
+          const imgX = Math.floor(x * (imgCopy.width / width));
+          const imgY = Math.floor(y * (imgCopy.height / height));
+          const w = Math.ceil(imgCopy.width / width);
+          const h = Math.ceil(imgCopy.height / height);
   
-        if (isSingleColor) {
-          let rowChars = "";
-          let xPositions = [];
-          for (let x = 0; x < width; x++) {
-            const imgX = Math.floor(x * (imgCopy.width / width));
-            const imgY = Math.floor(y * (imgCopy.height / height));
-            const w = Math.ceil(imgCopy.width / width);
-            const h = Math.ceil(imgCopy.height / height);
+          const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
+          const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+          const charIndex = window.invert
+            ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
+            : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+          const c = window.density.charAt(charIndex);
   
-            const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
-            const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-            const charIndex = window.invert
-              ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-              : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-            const char = window.density.charAt(charIndex);
-            
-            if (char !== ' ') {
-              rowChars += char;
-              xPositions.push((x + 0.5) * cellSize);
-            }
+          let colorClass;
+          if (window.useImageColors && gridCellColors) {
+            const color = gridCellColors[y * width + x];
+            colorClass = `c${color[0]}_${color[1]}_${color[2]}`;
+          } else if (isSingleColor) {
+            colorClass = "";
+          } else {
+            colorClass = `c${c}`;
           }
-          rowContent = `<tspan x="${xPositions.join(',')}">${rowChars}</tspan>`;
-        } else {
-          let currentChar = "";
-          let charPositions = [];
   
-          for (let x = 0; x < width; x++) {
-            const imgX = Math.floor(x * (imgCopy.width / width));
-            const imgY = Math.floor(y * (imgCopy.height / height));
-            const w = Math.ceil(imgCopy.width / width);
-            const h = Math.ceil(imgCopy.height / height);
-  
-            const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
-            const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-            const charIndex = window.invert
-              ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-              : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-            const c = window.density.charAt(charIndex);
-  
-            if (c !== currentChar || x === width - 1) {
-              if (currentChar && charPositions.length > 0 && currentChar !== ' ') {
-                const xPositions = charPositions.map((pos) => (pos + 0.5) * cellSize).join(",");
-                rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
-                  charPositions.length
-                )}</tspan>`;
-              }
-              currentChar = c;
-              charPositions = [x];
-            } else {
-              charPositions.push(x);
-            }
-  
-            if (x === width - 1 && c === currentChar && c !== ' ') {
-              const xPositions = charPositions.map((pos) => (pos + 0.5) * cellSize).join(",");
-              rowContent += `<tspan x="${xPositions}" class="c${currentChar}">${currentChar.repeat(
-                charPositions.length
-              )}</tspan>`;
-            }
-          }
+          const xPos = (x + 0.5) * cellSize;
+          const yPos = (y + 0.5) * cellSize;
+          rowContent += `<tspan x="${xPos}" y="${yPos}" class="${colorClass}">${c}</tspan>`;
         }
-  
-        const yPos = (y + 0.5) * cellSize;
-        svgContent += `<text y="${yPos}">${rowContent}</text>`;
+        svgContent += `<text>${rowContent}</text>`;
       }
   
       svgContent += "</svg>";
@@ -484,9 +530,22 @@ function createSketch(p) {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+  
+      console.log("SVG download completed");
     } catch (error) {
       console.error("Error creating SVG:", error);
+    } finally {
+      isDownloading = false;
+      if (downloadButton) {
+        downloadButton.disabled = false;
+      }
     }
+  };
+  
+  colorExtractionWorker.onmessage = function(e) {
+    gridCellColors = e.data;
+    window.useImageColors = true;
+    window.updateSketch();
   };
 }
 

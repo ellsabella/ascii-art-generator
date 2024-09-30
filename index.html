@@ -13,7 +13,7 @@
   <div id="app-container">
     <div id="canvas-container"></div>
     <div id="control-panel">
-      <h1>GEOM ASCII Generator v1.5</h1>
+      <h1>GEOM ASCII Generator v1.6</h1>
       <h3>by Ella Whit a.k.a @bright_lightart</h3>
       <h2>Controls:</h2>
 
@@ -25,15 +25,16 @@
       <div class="control-group">
         <button id="reset-image">Reset to Default Image</button>
       </div>
+
       <div class="control-group">
         <button id="reset-settings">Reset All Settings</button>
       </div>
 
       <div class="control-group vertical-slider">
-        <label for="cf">Brightness:</label>
+        <label for="cf">Contrast:</label>
         <div class="slider-with-input">
-          <input type="number" id="cf-value" class="value-input" min="0" max="100" value="55">
-          <input type="range" id="cf" class="range-input" min="0" max="100" value="55">
+          <input type="number" id="cf-value" class="value-input" min="0" max="150" value="55">
+          <input type="range" id="cf" class="range-input" min="0" max="150" value="55">
         </div>
       </div>
       
@@ -77,6 +78,15 @@
       </div>
 
       <div class="control-group">
+        <label for="color-extraction-toggle">Use Image Colors:</label>
+        <input type="checkbox" id="color-extraction-toggle">
+      </div>
+
+      <div id="color-extraction-message" style="display: none;">
+        <p>ASCII Colors are being extracted from the image. Adjust other parameters as needed.</p>
+      </div>
+
+      <div class="control-group">
         <label>Number of Colors:</label>
         <div class="radio-group">
           <div class="radio-option">
@@ -112,59 +122,76 @@
         <h3>Start Color</h3>
         <div class="color-slider-group">
           <div class="color-slider-container">
-            <label for="start-color-r">R</label>
-            <input type="number" id="start-color-r-value" class="color-value-input" min="0" max="255" value="255">
-            <input type="range" id="start-color-r" class="color-slider" data-color="start" data-channel="r" min="0" max="255" value="255">
+            <label for="start-color-h">H</label>
+            <input type="number" id="start-color-h-value" class="color-value-input" min="0" max="360" value="60">
+            <input type="range" id="start-color-h" class="color-slider" data-color="start" data-channel="h" min="0" max="360" value="60">
           </div>
           <div class="color-slider-container">
-            <label for="start-color-g">G</label>
-            <input type="number" id="start-color-g-value" class="color-value-input" min="0" max="255" value="255">
-            <input type="range" id="start-color-g" class="color-slider" data-color="start" data-channel="g" min="0" max="255" value="255">
+            <label for="start-color-s">S</label>
+            <input type="number" id="start-color-s-value" class="color-value-input" min="0" max="100" value="100">
+            <input type="range" id="start-color-s" class="color-slider" data-color="start" data-channel="s" min="0" max="100" value="100">
           </div>
           <div class="color-slider-container">
-            <label for="start-color-b">B</label>
-            <input type="number" id="start-color-b-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="start-color-b" class="color-slider" data-color="start" data-channel="b" min="0" max="255" value="0">
+            <label for="start-color-l">L</label>
+            <input type="number" id="start-color-l-value" class="color-value-input" min="0" max="100" value="50">
+            <input type="range" id="start-color-l" class="color-slider" data-color="start" data-channel="l" min="0" max="100" value="50">
+          </div>
+          <div class="color-slider-container">
+            <label for="start-color-a">A</label>
+            <input type="number" id="start-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
+            <input type="range" id="start-color-a" class="color-slider" data-color="start" data-channel="a" min="0" max="1" value="1" step="0.01">
           </div>
         </div>
       </div>
+
       <div class="control-group" id="middle-color">
         <h3>Middle Color</h3>
         <div class="color-slider-group">
           <div class="color-slider-container">
-            <label for="middle-color-r">R</label>
-            <input type="number" id="middle-color-r-value" class="color-value-input" min="0" max="255" value="255">
-            <input type="range" id="middle-color-r" class="color-slider" data-color="middle" data-channel="r" min="0" max="255" value="255">
+            <label for="middle-color-h">H</label>
+            <input type="number" id="middle-color-h-value" class="color-value-input" min="0" max="360" value="60">
+            <input type="range" id="middle-color-h" class="color-slider" data-color="middle" data-channel="h" min="0" max="360" value="160">
           </div>
           <div class="color-slider-container">
-            <label for="middle-color-g">G</label>
-            <input type="number" id="middle-color-g-value" class="color-value-input" min="0" max="255" value="155">
-            <input type="range" id="middle-color-g" class="color-slider" data-color="middle" data-channel="g" min="0" max="255" value="155">
+            <label for="middle-color-s">S</label>
+            <input type="number" id="middle-color-s-value" class="color-value-input" min="0" max="100" value="100">
+            <input type="range" id="middle-color-s" class="color-slider" data-color="middle" data-channel="s" min="0" max="100" value="100">
           </div>
           <div class="color-slider-container">
-            <label for="middle-color-b">B</label>
-            <input type="number" id="middle-color-b-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="middle-color-b" class="color-slider" data-color="middle" data-channel="b" min="0" max="255" value="0">
+            <label for="middle-color-l">L</label>
+            <input type="number" id="middle-color-l-value" class="color-value-input" min="0" max="100" value="50">
+            <input type="range" id="middle-color-l" class="color-slider" data-color="middle" data-channel="l" min="0" max="100" value="50">
+          </div>
+          <div class="color-slider-container">
+            <label for="middle-color-a">A</label>
+            <input type="number" id="middle-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
+            <input type="range" id="middle-color-a" class="color-slider" data-color="middle" data-channel="a" min="0" max="1" value="1" step="0.01">
           </div>
         </div>
       </div>
+
       <div class="control-group" id="end-color">
         <h3>End Color</h3>
         <div class="color-slider-group">
           <div class="color-slider-container">
-            <label for="end-color-r">R</label>
-            <input type="number" id="end-color-r-value" class="color-value-input" min="0" max="255" value="255">
-            <input type="range" id="end-color-r" class="color-slider" data-color="end" data-channel="r" min="0" max="255" value="255">
+            <label for="end-color-h">H</label>
+            <input type="number" id="end-color-h-value" class="color-value-input" min="0" max="360" value="60">
+            <input type="range" id="end-color-h" class="color-slider" data-color="end" data-channel="h" min="0" max="360" value="260">
           </div>
           <div class="color-slider-container">
-            <label for="end-color-g">G</label>
-            <input type="number" id="end-color-g-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="end-color-g" class="color-slider" data-color="end" data-channel="g" min="0" max="255" value="0">
+            <label for="end-color-s">S</label>
+            <input type="number" id="end-color-s-value" class="color-value-input" min="0" max="100" value="100">
+            <input type="range" id="end-color-s" class="color-slider" data-color="end" data-channel="s" min="0" max="100" value="100">
           </div>
           <div class="color-slider-container">
-            <label for="end-color-b">B</label>
-            <input type="number" id="end-color-b-value" class="color-value-input" min="0" max="255" value="255">
-            <input type="range" id="end-color-b" class="color-slider" data-color="end" data-channel="b" min="0" max="255" value="255">
+            <label for="end-color-l">L</label>
+            <input type="number" id="end-color-l-value" class="color-value-input" min="0" max="100" value="50">
+            <input type="range" id="end-color-l" class="color-slider" data-color="end" data-channel="l" min="0" max="100" value="50">
+          </div>
+          <div class="color-slider-container">
+            <label for="end-color-a">A</label>
+            <input type="number" id="end-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
+            <input type="range" id="end-color-a" class="color-slider" data-color="end" data-channel="a" min="0" max="1" value="1" step="0.01">
           </div>
         </div>
       </div>
@@ -195,38 +222,45 @@
         <h4>Custom Background Color</h4>
         <div class="color-slider-group">
           <div class="color-slider-container">
-            <label for="bg-color-r">R</label>
-            <input type="number" id="bg-color-r-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="bg-color-r" class="color-slider" data-color="customBg" data-channel="r" min="0" max="255" value="0">
+            <label for="bg-color-color-h">H</label>
+            <input type="number" id="bg-color-color-h-value" class="color-value-input" min="0" max="360" value="60">
+            <input type="range" id="bg-color-color-h" class="color-slider" data-color="bg-color" data-channel="h" min="0" max="360" value="260">
           </div>
           <div class="color-slider-container">
-            <label for="bg-color-g">G</label>
-            <input type="number" id="bg-color-g-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="bg-color-g" class="color-slider" data-color="customBg" data-channel="g" min="0" max="255" value="0">
+            <label for="bg-color-color-s">S</label>
+            <input type="number" id="bg-color-color-s-value" class="color-value-input" min="0" max="100" value="100">
+            <input type="range" id="bg-color-color-s" class="color-slider" data-color="bg-color" data-channel="s" min="0" max="100" value="100">
           </div>
           <div class="color-slider-container">
-            <label for="bg-color-b">B</label>
-            <input type="number" id="bg-color-b-value" class="color-value-input" min="0" max="255" value="0">
-            <input type="range" id="bg-color-b" class="color-slider" data-color="customBg" data-channel="b" min="0" max="255" value="0">
+            <label for="bg-color-color-l">L</label>
+            <input type="number" id="bg-color-color-l-value" class="color-value-input" min="0" max="100" value="50">
+            <input type="range" id="bg-color-color-l" class="color-slider" data-color="bg-color" data-channel="l" min="0" max="100" value="50">
+          </div>
+          <div class="color-slider-container">
+            <label for="bg-color-color-a">A</label>
+            <input type="number" id="bg-color-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
+            <input type="range" id="bg-color-color-a" class="color-slider" data-color="bg-color" data-channel="a" min="0" max="1" value="1" step="0.01">
           </div>
         </div>
       </div>
 
-    <div class="control-group vertical-slider">
-      <label for="columns">Number of Columns:</label>
-      <div class="slider-with-input">
-        <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
-        <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
+      <div class="control-group vertical-slider">
+        <label for="columns">Number of Columns:</label>
+        <div class="slider-with-input">
+          <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
+          <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
+        </div>
       </div>
-    </div>
-    <div class="control-group">
-      <label for="png-width">PNG Width:</label>
-      <input type="number" id="png-width" min="1" value="900">
-      <button id="download-png" class="download-button">Download PNG</button>
-    </div>
-    <div class="control-group">
-      <button id="download-svg" class="download-button">Download SVG</button>
-    </div>
+
+      <div class="control-group">
+        <label for="png-width">PNG Width:</label>
+        <input type="number" id="png-width" min="1" value="900">
+        <button id="download-png" class="download-button">Download PNG</button>
+      </div>
+
+      <div class="control-group">
+        <button id="download-svg" class="download-button">Download SVG</button>
+      </div>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>
