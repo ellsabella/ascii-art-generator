@@ -485,6 +485,7 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
       reader.readAsDataURL(source);
     }
   });
+
   loadImagePromise
     .then((newImg) => {
       window.img = newImg;
@@ -497,22 +498,14 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
       }
 
       if (window.useImageColors) {
+        window.isExtractingColors = true;
+        window.updateSketch(); 
         window.extractColors();
+      } else {
+        window.updateSketch();
       }
     })
     .catch((error) => console.error("Error loading image:", error));
-  // loadImagePromise
-  //   .then((newImg) => {
-  //     window.img = newImg;
-  //     if (callback) callback();
-
-  //     if (typeof window.initializeSketch === "function") {
-  //       window.initializeSketch();
-  //     } else {
-  //       console.warn("initializeSketch function not found. Sketch may not update correctly.");
-  //     }
-  //   })
-  //   .catch((error) => console.error("Error loading image:", error));
 }
 
 function updateColorControls() {

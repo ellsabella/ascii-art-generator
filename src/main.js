@@ -54,23 +54,36 @@ function createSketch(p) {
     animationFrameId = requestAnimationFrame(() => {
       try {
         if (!window.img || typeof window.img.height === "undefined" || typeof window.img.width === "undefined") {
+          console.log("No valid image available");
           return;
         }
         
         if (!p || typeof p.floor !== "function" || typeof p.width === "undefined") {
+          console.log("p5 instance not properly initialized");
           return;
         }
-
+  
         gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
         gw = p.width / window.gridColumns;
         p.textSize(gw * 0.9);
         
         if (window.useImageColors && !gridCellColors) {
-          window.extractColors();
+          if (!window.isExtractingColors) {
+            console.log("Using image colors. Extracting colors with updated grid dimensions.");
+            window.isExtractingColors = true;
+            window.extractColors();
+          }
+          // Show loading state
+          p.background(220);
+          p.fill(0);
+          p.textSize(20);
+          p.textAlign(p.CENTER, p.CENTER);
+          p.text("Extracting colors...", p.width / 2, p.height / 2);
           return;
         }
         
         if (!window.useImageColors) {
+          console.log("Updating color map");
           colorMap = updateColorMap(p, window);
         } else {
           console.log("Using image colors");
@@ -218,13 +231,14 @@ function createSketch(p) {
   }
 
   function drawAsciiArt(graphics = null) {
+    console.log("Drawing ASCII art, graphics null?", graphics === null);
     const isOffscreen = graphics !== null;
     const canvas = isOffscreen ? graphics : p;
     const imgToUse = isOffscreen ? highResImg : window.img;
     const bgColor = getBgColor();
     canvas.background(bgColor);
     canvas.textFont(font);
-
+  
     const useOriginalGrid = window.useImageColors && gridCellColors;
     
     let scaledGridColumns, scaledGridRows;
@@ -245,7 +259,7 @@ function createSketch(p) {
     canvas.textSize(fontSize);
     canvas.textAlign(p.CENTER, p.CENTER);
     imgToUse.loadPixels();
-
+  
     for (let y = 0; y < scaledGridRows; y++) {
       for (let x = 0; x < scaledGridColumns; x++) {
         const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
@@ -272,7 +286,7 @@ function createSketch(p) {
               charColor = p.color(255);
             }
           } else {
-            console.error("Color index out of bounds:", colorIndex, "Max index:", gridCellColors.length - 1);
+            // console.warn("Color index out of bounds:", colorIndex, "Max index:", gridCellColors.length - 1);
             charColor = p.color(255);
           }
         } else {
@@ -545,6 +559,7 @@ function createSketch(p) {
   colorExtractionWorker.onmessage = function(e) {
     gridCellColors = e.data;
     window.useImageColors = true;
+    window.isExtractingColors = false;
     window.updateSketch();
   };
 }
