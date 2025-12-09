@@ -146,6 +146,26 @@ export function lerpHSLA(color1, color2, t) {
     });
 }
 
+// Convert #RRGGBB to { r, g, b }
+export function hexToRgb(hex) {
+  if (!hex) return null;
+  const stripped = hex.replace("#", "");
+  if (stripped.length !== 6) return null;
+
+  const num = parseInt(stripped, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+
+// Convert { r, g, b } to "#RRGGBB"
+export function rgbToHex(r, g, b) {
+  const toHex = (v) => v.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 function euclideanDistance(a, b) {
     return Math.sqrt(
         Math.pow(a[0] - b[0], 2) +

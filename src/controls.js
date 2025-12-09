@@ -1,5 +1,6 @@
 // import { extractDominantColors, assignColorsAndBackground, rgbToHsl, isGrayscale } from "./colorUtils.js";
 import p5 from "p5";
+import { hslToRgb, rgbToHsl, hexToRgb, rgbToHex } from "./colorUtils.js";
 
 function debounce(func, delay) {
   let timeout;
@@ -11,7 +12,15 @@ function debounce(func, delay) {
 
 export function initializeControls(p5Instance) {
   window.customBgColor = window.customBgColor || [0, 0, 100, 1]; // HSLA
+  if (!window.advancedBgMode) {
+    window.advancedBgMode = "off";
+  }
   
+  // Base HSLA for colour-picker mode (blue-ish)
+  if (!window.advancedBgColor) {
+    window.advancedBgColor = [210, 80, 50, 1]; // [h, s, l, a]
+  }
+
   // File upload
   setupFileUpload(p5Instance);
 
@@ -20,6 +29,12 @@ export function initializeControls(p5Instance) {
 
   // Reset settings button
   setupResetSettings();
+
+  // Mode toggle (Normal / Advanced)
+  setupModeToggle();
+
+  // advanced background mode toggle
+  setupAdvancedBackgroundControls();
 
   // Debounced MP slider and input
   setupMPSlider();
@@ -94,6 +109,223 @@ function setupResetSettings() {
   const resetSettingsButton = document.getElementById("reset-settings");
   if (resetSettingsButton) {
     resetSettingsButton.addEventListener("click", resetAllSettings);
+  }
+}
+
+function setupModeToggle() {
+  const modeNormal = document.getElementById("mode-normal");
+  const modeAdvanced = document.getElementById("mode-advanced");
+
+  if (!modeNormal || !modeAdvanced) {
+    console.warn("Mode toggle elements not found in DOM.");
+    return;
+  }
+
+  if (!window.mode) {
+    window.mode = "normal";
+  }
+
+  modeNormal.checked = window.mode === "normal";
+  modeAdvanced.checked = window.mode === "advanced";
+
+  const handleChange = (event) => {
+    const value = event.target.value; // "normal" or "advanced"
+    window.mode = value;
+
+    if (value === "advanced") {
+      // Default Advanced mode to grayscale pixels
+      window.advancedBgMode = "grayscale";
+
+      const grayRadio = document.getElementById("advanced-bg-grayscale");
+      const offRadio = document.getElementById("advanced-bg-off");
+      if (grayRadio) grayRadio.checked = true;
+      if (offRadio) offRadio.checked = false;
+
+    } else {
+      // Back to Normal: no advanced backgrounds, black flat bg
+      window.advancedBgMode = "off";
+      window.bgColorOption = "black";
+
+      const bgBlackRadio = document.getElementById("bg-black");
+      if (bgBlackRadio) bgBlackRadio.checked = true;
+
+      const customBgColorDiv = document.getElementById("custom-bg-color");
+      if (customBgColorDiv) {
+        customBgColorDiv.style.display = "none";
+      }
+    }
+
+    updateModeUI();
+    if (typeof window.updateSketch === "function") {
+      window.updateSketch();
+    }
+  };
+
+  modeNormal.addEventListener("change", handleChange);
+  modeAdvanced.addEventListener("change", handleChange);
+
+  updateModeUI();
+}
+
+// function setupModeToggle() {
+//   const modeNormal = document.getElementById("mode-normal");
+//   const modeAdvanced = document.getElementById("mode-advanced");
+
+//   if (!modeNormal || !modeAdvanced) {
+//     console.warn("Mode toggle elements not found in DOM.");
+//     return;
+//   }
+
+//   // Default mode: normal
+//   if (!window.mode) {
+//     window.mode = "normal";
+//   }
+
+//   // Ensure radios reflect the current mode
+//   modeNormal.checked = window.mode === "normal";
+//   modeAdvanced.checked = window.mode === "advanced";
+
+//   const handleChange = (event) => {
+//     const value = event.target.value; // "normal" or "advanced"
+//     window.mode = value;
+
+//     if (value === "advanced") {
+//       // When entering Advanced mode, default to grayscale pixels
+//       window.advancedBgMode = "grayscale";
+
+//       const grayRadio = document.getElementById("advanced-bg-grayscale");
+//       const offRadio = document.getElementById("advanced-bg-off");
+
+//       if (grayRadio) grayRadio.checked = true;
+//       if (offRadio) offRadio.checked = false;
+
+//     } else {
+//       // When going back to Normal mode, reset advanced bg + flat bg to black
+//       window.advancedBgMode = "off";
+//       window.bgColorOption = "black";
+
+//       const bgBlackRadio = document.getElementById("bg-black");
+//       if (bgBlackRadio) bgBlackRadio.checked = true;
+
+//       const customBgColorDiv = document.getElementById("custom-bg-color");
+//       if (customBgColorDiv) {
+//         customBgColorDiv.style.display = "none";
+//       }
+//     }
+
+  //   // Show/hide advanced-only controls
+  //   updateModeUI();
+
+  //   // Re-render with the new mode/background behavior
+  //   if (typeof window.updateSketch === "function") {
+  //     window.updateSketch();
+  //   }
+  // };
+
+//   modeNormal.addEventListener("change", handleChange);
+//   modeAdvanced.addEventListener("change", handleChange);
+
+//   // Initial UI sync
+//   updateModeUI();
+// }
+
+// function setupAdvancedBackgroundControls() {
+//   const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
+//   if (!radios.length) {
+//     return; // HTML not present, fail quietly
+//   }
+
+//   // Sync initial UI with current state
+//   radios.forEach((radio) => {
+//     radio.checked = radio.value === window.advancedBgMode;
+//   });
+
+//   const handleChange = (event) => {
+//     const value = event.target.value; // "off" or "grayscale"
+//     window.advancedBgMode = value;
+
+//     // Re-render with new background behavior
+//     if (typeof window.updateSketch === "function") {
+//       window.updateSketch();
+//     }
+//   };
+
+//   radios.forEach((radio) => {
+//     radio.addEventListener("change", handleChange);
+//   });
+// }
+
+function setupAdvancedBackgroundControls() {
+  const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
+  if (!radios.length) return;
+
+  // Sync UI with current state
+  radios.forEach((radio) => {
+    radio.checked = radio.value === window.advancedBgMode;
+  });
+
+  const handleChange = (event) => {
+    const value = event.target.value; // "off" | "grayscale" | "oppositeHue" | "colorPicker"
+    window.advancedBgMode = value;
+    toggleAdvancedBgColorPickerVisibility();
+
+    if (typeof window.updateSketch === "function") {
+      window.updateSketch();
+    }
+  };
+
+  radios.forEach((radio) => {
+    radio.addEventListener("change", handleChange);
+  });
+
+  // Set up colour-picker input
+  const colorInput = document.getElementById("advanced-bg-color-input");
+  if (colorInput) {
+    // Initialise from window.advancedBgColor (HSLA)
+    const [h, s, l] = window.advancedBgColor;
+    const [r, g, b] = hslToRgb(h, s, l);
+    colorInput.value = rgbToHex(r, g, b);
+
+    colorInput.addEventListener("input", (event) => {
+      const rgb = hexToRgb(event.target.value);
+      if (!rgb) return;
+      const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      window.advancedBgColor = [hh, ss, ll, 1];
+
+      if (typeof window.updateSketch === "function") {
+        window.updateSketch();
+      }
+    });
+  }
+
+  toggleAdvancedBgColorPickerVisibility();
+}
+
+function toggleAdvancedBgColorPickerVisibility() {
+  const pickerControls = document.getElementById("advanced-bg-color-picker-controls");
+  if (!pickerControls) return;
+
+  const shouldShow =
+    window.mode === "advanced" && window.advancedBgMode === "colorPicker";
+
+  pickerControls.style.display = shouldShow ? "block" : "none";
+}
+
+function updateModeUI() {
+  const isAdvanced = window.mode === "advanced";
+
+  // Show/hide advanced-only controls
+  const advancedControls = document.querySelectorAll(".advanced-only");
+  advancedControls.forEach((el) => {
+    el.style.display = isAdvanced ? "" : "none";
+  });
+
+  // Keep this part: custom background controls should still depend on bgColorOption
+  const customBgColorDiv = document.getElementById("custom-bg-color");
+  if (customBgColorDiv) {
+    customBgColorDiv.style.display =
+      window.bgColorOption === "custom" && !isAdvanced ? "block" : "none";
+    // (If you want custom bg visible even in advanced, remove `&& !isAdvanced`.)
   }
 }
 
@@ -617,6 +849,8 @@ function resetAllSettings() {
   window.bgColorOption = "black";
   window.customBgColor = [0, 0, 100, 1];   // HSLA
   window.useImageColors = false;
+  window.mode = "normal";
+  window.advancedBgMode = "off";
 
   // Update UI elements
   const updateElement = (id, value) => {
@@ -645,6 +879,8 @@ function resetAllSettings() {
   updateElement("color-count-2", true);
   updateElement("lerp-true", true);
   updateElement("bg-black", true);
+  updateElement("mode-normal", true);
+  updateElement("advanced-bg-off", true);
 
   // Update color extraction toggle
   const colorExtractionToggle = document.getElementById("color-extraction-toggle");

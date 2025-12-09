@@ -30,6 +30,48 @@
         <button id="reset-settings">Reset All Settings</button>
       </div>
 
+      <div class="control-group" id="mode-toggle-group">
+        <h3>Mode</h3>
+        <label>
+          <input type="radio" name="mode" id="mode-normal" value="normal" checked />
+          Normal
+        </label>
+        <label>
+          <input type="radio" name="mode" id="mode-advanced" value="advanced" />
+          Advanced
+        </label>
+      </div>
+
+      <div class="control-group advanced-only" id="advanced-bg-controls">
+        <h3>Advanced Background</h3>
+
+        <label>
+          <input type="radio" name="advanced-bg-mode" id="advanced-bg-off" value="off" checked />
+          Flat background
+        </label>
+
+        <label>
+          <input type="radio" name="advanced-bg-mode" id="advanced-bg-grayscale" value="grayscale" />
+          Grayscale pixels
+        </label>
+
+        <label>
+          <input type="radio" name="advanced-bg-mode" id="advanced-bg-opposite-hue" value="oppositeHue" />
+          Opposite hue
+        </label>
+
+        <label>
+          <input type="radio" name="advanced-bg-mode" id="advanced-bg-color-picker" value="colorPicker" />
+          Colour picker
+        </label>
+
+        <!-- Only relevant when "Colour picker" is selected -->
+        <div id="advanced-bg-color-picker-controls">
+          <label for="advanced-bg-color-input">Pixel colour</label>
+          <input type="color" id="advanced-bg-color-input" />
+        </div>
+</div>
+
       <div class="control-group vertical-slider">
         <label for="cf">Contrast:</label>
         <div class="slider-with-input">
