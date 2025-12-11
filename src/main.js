@@ -2,7 +2,7 @@ import p5 from "p5";
 import "./styles.css";
 import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
-import { updateColorMap, kMeansColorClustering, hslToRgb } from "./colorUtils.js";
+import { updateColorMap, kMeansColorClustering, hslToRgb, rgbToHsl } from "./colorUtils.js";
 
 let p5Instance;
 let animationFrameId = null;
@@ -18,7 +18,6 @@ function createSketch(p) {
   window.spaceCount = 0;
   window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
   window.colorCount = 2;
-  window.invert = true;
   window.gridColumns = 150;
   window.printRes = 900;
   window.cF = 0.55;
@@ -34,6 +33,11 @@ function createSketch(p) {
   window.advancedBgMode = "off" | "grayscale" | "oppositeHue" | "colorPicker";
   // window.advancedBgMode = window.advancedBgMode || "off";
   // window.advancedBgColor = window.advancedBgColor || [210, 80, 50, 1];
+  window.advancedBgMode = window.advancedBgMode || "off";
+  window.advancedBgColor = window.advancedBgColor || [210, 80, 50, 1];
+  if (typeof window.hOffset !== "number") window.hOffset = 0;
+  if (typeof window.sOffset !== "number") window.sOffset = 0;
+  if (typeof window.lOffset !== "number") window.lOffset = 0;
 
   let colorMap;
   let isDownloading = false;
@@ -235,179 +239,6 @@ function createSketch(p) {
     }
   }
 
-  // function drawAsciiArt(graphics = null) {
-  //   console.log("Drawing ASCII art, graphics null?", graphics === null);
-  //   const isOffscreen = graphics !== null;
-  //   const canvas = isOffscreen ? graphics : p;
-  //   const imgToUse = isOffscreen ? highResImg : window.img;
-  //   const bgColor = getBgColor();
-  //   canvas.background(bgColor);
-  //   canvas.textFont(font);
-  
-  //   const useOriginalGrid = window.useImageColors && gridCellColors;
-    
-  //   let scaledGridColumns, scaledGridRows;
-  //   if (useOriginalGrid) {
-  //     scaledGridColumns = window.gridColumns;
-  //     scaledGridRows = gridRows;
-  //   } else {
-  //     const scaleX = canvas.width / p.width;
-  //     const scaleY = canvas.height / p.height;
-  //     scaledGridColumns = Math.floor(window.gridColumns * scaleX);
-  //     scaledGridRows = Math.floor(gridRows * scaleY);
-  //   }
-  
-  //   const cellWidth = canvas.width / scaledGridColumns;
-  //   const cellHeight = canvas.height / scaledGridRows;
-  
-  //   const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
-  //   canvas.textSize(fontSize);
-  //   canvas.textAlign(p.CENTER, p.CENTER);
-  //   imgToUse.loadPixels();
-  
-  //   for (let y = 0; y < scaledGridRows; y++) {
-  //     for (let x = 0; x < scaledGridColumns; x++) {
-  //       const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
-  //       const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
-  //       const w = Math.ceil(imgToUse.width / scaledGridColumns);
-  //       const h = Math.ceil(imgToUse.height / scaledGridRows);
-  
-  //       const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
-  //       const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-  //       const charIndex = window.invert
-  //         ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-  //         : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-  //       const c = window.density.charAt(charIndex);
-  
-  //       let charColor;
-  //       if (window.useImageColors && gridCellColors) {
-  //         const colorIndex = y * scaledGridColumns + x;
-  //         if (colorIndex < gridCellColors.length) {
-  //           const colorArray = gridCellColors[colorIndex];
-  //           if (Array.isArray(colorArray) && colorArray.length === 3) {
-  //             charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
-  //           } else {
-  //             console.warn("Invalid color data at index", colorIndex, colorArray);
-  //             charColor = p.color(255);
-  //           }
-  //         } else {
-  //           // console.warn("Color index out of bounds:", colorIndex, "Max index:", gridCellColors.length - 1);
-  //           charColor = p.color(255);
-  //         }
-  //       } else {
-  //         charColor = colorMap.get(c);
-  //       }
-  
-  //       if (charColor) {
-  //         canvas.fill(charColor);
-  //       } else {
-  //         canvas.fill(255);
-  //       }
-  
-  //       const xPos = (x + 0.5) * cellWidth;
-  //       const yPos = (y + 0.5) * cellHeight;
-  //       canvas.text(c, xPos, yPos);
-  //     }
-  //   }
-  // }
-
-  // function drawAsciiArt(graphics = null) {
-  //   console.log("Drawing ASCII art, graphics null?", graphics === null);
-
-  //   const isOffscreen = graphics !== null;
-  //   const canvas = isOffscreen ? graphics : p;
-  //   const imgToUse = isOffscreen ? highResImg : window.img;
-
-  //   const bgColor = getBgColor();
-  //   canvas.background(bgColor);
-  //   canvas.textFont(font);
-
-  //   const useOriginalGrid = window.useImageColors && gridCellColors;
-
-  //   let scaledGridColumns, scaledGridRows;
-  //   if (useOriginalGrid) {
-  //     // When using image colors, keep the original grid so color indices line up
-  //     scaledGridColumns = window.gridColumns;
-  //     scaledGridRows = gridRows;
-  //   } else {
-  //     // Scale grid to match the target canvas size (for offscreen / PNG rendering)
-  //     const scaleX = canvas.width / p.width;
-  //     const scaleY = canvas.height / p.height;
-  //     scaledGridColumns = Math.floor(window.gridColumns * scaleX);
-  //     scaledGridRows = Math.floor(gridRows * scaleY);
-  //   }
-
-  //   const cellWidth = canvas.width / scaledGridColumns;
-  //   const cellHeight = canvas.height / scaledGridRows;
-
-  //   const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
-  //   canvas.textSize(fontSize);
-  //   canvas.textAlign(p.CENTER, p.CENTER);
-
-  //   imgToUse.loadPixels();
-
-  //   const drawAdvancedBg = window.mode === "advanced" && window.advancedBgMode === "grayscale";
-
-  //   for (let y = 0; y < scaledGridRows; y++) {
-  //     for (let x = 0; x < scaledGridColumns; x++) {
-  //       // Map cell to image region
-  //       const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
-  //       const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
-  //       const w = Math.ceil(imgToUse.width / scaledGridColumns);
-  //       const h = Math.ceil(imgToUse.height / scaledGridRows);
-
-  //       // Brightness → character
-  //       const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
-  //       const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-
-  //       const charIndex = window.invert
-  //         ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-  //         : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
-
-  //       const c = window.density.charAt(charIndex);
-
-  //       // Determine character color
-  //       let charColor;
-  //       if (window.useImageColors && gridCellColors) {
-  //         const colorIndex = y * scaledGridColumns + x;
-  //         if (colorIndex < gridCellColors.length) {
-  //           const colorArray = gridCellColors[colorIndex];
-  //           if (Array.isArray(colorArray) && colorArray.length === 3) {
-  //             charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
-  //           } else {
-  //             console.warn("Invalid color data at index", colorIndex, colorArray);
-  //             charColor = p.color(255);
-  //           }
-  //         } else {
-  //           // console.warn("Color index out of bounds:", colorIndex, "Max index:", gridCellColors.length - 1);
-  //           charColor = p.color(255);
-  //         }
-  //       } else if (colorMap) {
-  //         charColor = colorMap.get(c);
-  //       }
-
-  //       // 🔳 Advanced mode: per-cell grayscale background
-  //       if (drawAdvancedBg) {
-  //         const gray = getCellBgGray(adjustedAvg); // 0–255
-  //         canvas.noStroke();
-  //         canvas.fill(gray);
-  //         canvas.rect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-  //       }
-
-  //       // Draw the character on top
-  //       if (charColor) {
-  //         canvas.fill(charColor);
-  //       } else {
-  //         canvas.fill(255);
-  //       }
-
-  //       const xPos = (x + 0.5) * cellWidth;
-  //       const yPos = (y + 0.5) * cellHeight;
-  //       canvas.text(c, xPos, yPos);
-  //     }
-  //   }
-  // }
-
   function drawAsciiArt(graphics = null) {
     console.log("Drawing ASCII art, graphics null?", graphics === null);
 
@@ -423,9 +254,11 @@ function createSketch(p) {
 
     let scaledGridColumns, scaledGridRows;
     if (useOriginalGrid) {
+      // When using image colors, keep the original grid so indices line up
       scaledGridColumns = window.gridColumns;
       scaledGridRows = gridRows;
     } else {
+      // Scale grid to the render target (e.g. offscreen PNG buffer)
       const scaleX = canvas.width / p.width;
       const scaleY = canvas.height / p.height;
       scaledGridColumns = Math.floor(window.gridColumns * scaleX);
@@ -446,17 +279,19 @@ function createSketch(p) {
 
     for (let y = 0; y < scaledGridRows; y++) {
       for (let x = 0; x < scaledGridColumns; x++) {
+        // Map cell → image region
         const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
         const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
         const w = Math.ceil(imgToUse.width / scaledGridColumns);
         const h = Math.ceil(imgToUse.height / scaledGridRows);
 
+        // Brightness and character
         const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
         const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
 
-        const charIndex = window.invert
-          ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-          : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+        const charIndex = Math.floor(
+          p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
+        );
 
         const c = window.density.charAt(charIndex);
 
@@ -482,6 +317,31 @@ function createSketch(p) {
         // 🔳 Advanced background per cell
         let bgRectColor = null;
 
+                // Base RGB for HSL offset mode
+        let baseRgbForHslOffset = null;
+
+        if (charColor) {
+          // Prefer the character color as base
+          const [cr, cg, cb] = charColor.levels;
+          baseRgbForHslOffset = [cr, cg, cb];
+        } else if (window.useImageColors && gridCellColors) {
+          // If no charColor (e.g. space) but image colors exist, use the image cell color
+          const cellIndex = y * scaledGridColumns + x;
+          if (cellIndex < gridCellColors.length) {
+            const colorArray = gridCellColors[cellIndex];
+            if (Array.isArray(colorArray) && colorArray.length === 3) {
+              baseRgbForHslOffset = [colorArray[0], colorArray[1], colorArray[2]];
+            }
+          }
+        }
+
+        if (!baseRgbForHslOffset) {
+          // Fallback: build a neutral grey from brightness when no color is available
+          const lGrey = Math.max(0, Math.min(100, (adjustedAvg / 255) * 100));
+          const [gr, gg, gb] = hslToRgb(0, 0, lGrey);
+          baseRgbForHslOffset = [gr, gg, gb];
+        }
+
         if (isAdvancedMode) {
           switch (advancedBgMode) {
             case "grayscale": {
@@ -489,25 +349,23 @@ function createSketch(p) {
               bgRectColor = p.color(gray);
               break;
             }
-            case "oppositeHue": {
-              if (charColor) {
-                const [r, g, b] = charColor.levels;
-                const [h, s, l] = rgbToHsl(r, g, b);
-                const oppositeH = (h + 180) % 360;
-                const [or, og, ob] = hslToRgb(oppositeH, s, l);
-                bgRectColor = p.color(or, og, ob);
-              }
+
+            case "hslOffset": {
+              const bg = getHslOffsetBgColor(baseRgbForHslOffset, adjustedAvg);
+              if (bg) bgRectColor = bg;
               break;
             }
+
             case "colorPicker": {
               const [baseH, baseS, , baseA = 1] =
                 window.advancedBgColor || [210, 80, 50, 1];
-              // Use brightness to drive lightness: 0..255 -> 0..100
+
               const l = Math.round((adjustedAvg / 255) * 100);
               const [r, g, b] = hslToRgb(baseH, baseS, l);
               bgRectColor = p.color(r, g, b, baseA * 255);
               break;
             }
+
             case "off":
             default:
               break;
@@ -560,6 +418,25 @@ function createSketch(p) {
       default:
         return "rgb(0, 0, 0)";
     }
+  }
+
+  function getHslOffsetBgColor(baseRgb, adjustedAvg) {
+    if (!baseRgb || baseRgb.length < 3) return null;
+
+    let [r, g, b] = baseRgb;
+    let [h, s, l] = rgbToHsl(r, g, b); // h:0-360, s/l:0-100
+
+    // Apply offsets from UI
+    const hOffset = window.hOffset || 0;
+    const sOffset = window.sOffset || 0;
+    const lOffset = window.lOffset || 0;
+
+    h = (h + hOffset + 360) % 360;
+    s = Math.max(0, Math.min(100, s + sOffset));
+    l = Math.max(0, Math.min(100, l + lOffset));
+
+    const [rr, gg, bb] = hslToRgb(h, s, l);
+    return p.color(rr, gg, bb);
   }
 
   function getAverageGrayscale(imgPixels, x, y, w, h) {
@@ -745,9 +622,9 @@ function createSketch(p) {
   
           const avg = getAverageGrayscale(imgCopy, imgX, imgY, w, h);
           const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
-          const charIndex = window.invert
-            ? Math.floor(p.map(adjustedAvg, 0, 255, window.density.length - 1, 0))
-            : Math.floor(p.map(adjustedAvg, 0, 255, 0, window.density.length - 1));
+          const charIndex = Math.floor(
+            p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
+          );
           const c = window.density.charAt(charIndex);
   
           let colorClass;

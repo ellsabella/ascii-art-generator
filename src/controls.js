@@ -12,14 +12,20 @@ function debounce(func, delay) {
 
 export function initializeControls(p5Instance) {
   window.customBgColor = window.customBgColor || [0, 0, 100, 1]; // HSLA
+
   if (!window.advancedBgMode) {
-    window.advancedBgMode = "off";
+    window.advancedBgMode = "off"; // "off" | "grayscale" | "hslOffset" | "colorPicker"
   }
-  
-  // Base HSLA for colour-picker mode (blue-ish)
+
+  // Base HSLA for colour-picker mode (example default)
   if (!window.advancedBgColor) {
     window.advancedBgColor = [210, 80, 50, 1]; // [h, s, l, a]
   }
+
+  // HSL offsets for HSL offset mode
+  if (typeof window.hOffset !== "number") window.hOffset = -90; // degrees
+  if (typeof window.sOffset !== "number") window.sOffset = -20; // -100..100
+  if (typeof window.lOffset !== "number") window.lOffset = -200; // -100..100
 
   // File upload
   setupFileUpload(p5Instance);
@@ -50,9 +56,6 @@ export function initializeControls(p5Instance) {
 
   // Space slider input
   setupSpaceSlider();
-
-  // Invert radio buttons
-  setupInvertRadios();
 
   // Columns input with debounce
   setupColumnsInput();
@@ -167,94 +170,6 @@ function setupModeToggle() {
   updateModeUI();
 }
 
-// function setupModeToggle() {
-//   const modeNormal = document.getElementById("mode-normal");
-//   const modeAdvanced = document.getElementById("mode-advanced");
-
-//   if (!modeNormal || !modeAdvanced) {
-//     console.warn("Mode toggle elements not found in DOM.");
-//     return;
-//   }
-
-//   // Default mode: normal
-//   if (!window.mode) {
-//     window.mode = "normal";
-//   }
-
-//   // Ensure radios reflect the current mode
-//   modeNormal.checked = window.mode === "normal";
-//   modeAdvanced.checked = window.mode === "advanced";
-
-//   const handleChange = (event) => {
-//     const value = event.target.value; // "normal" or "advanced"
-//     window.mode = value;
-
-//     if (value === "advanced") {
-//       // When entering Advanced mode, default to grayscale pixels
-//       window.advancedBgMode = "grayscale";
-
-//       const grayRadio = document.getElementById("advanced-bg-grayscale");
-//       const offRadio = document.getElementById("advanced-bg-off");
-
-//       if (grayRadio) grayRadio.checked = true;
-//       if (offRadio) offRadio.checked = false;
-
-//     } else {
-//       // When going back to Normal mode, reset advanced bg + flat bg to black
-//       window.advancedBgMode = "off";
-//       window.bgColorOption = "black";
-
-//       const bgBlackRadio = document.getElementById("bg-black");
-//       if (bgBlackRadio) bgBlackRadio.checked = true;
-
-//       const customBgColorDiv = document.getElementById("custom-bg-color");
-//       if (customBgColorDiv) {
-//         customBgColorDiv.style.display = "none";
-//       }
-//     }
-
-  //   // Show/hide advanced-only controls
-  //   updateModeUI();
-
-  //   // Re-render with the new mode/background behavior
-  //   if (typeof window.updateSketch === "function") {
-  //     window.updateSketch();
-  //   }
-  // };
-
-//   modeNormal.addEventListener("change", handleChange);
-//   modeAdvanced.addEventListener("change", handleChange);
-
-//   // Initial UI sync
-//   updateModeUI();
-// }
-
-// function setupAdvancedBackgroundControls() {
-//   const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
-//   if (!radios.length) {
-//     return; // HTML not present, fail quietly
-//   }
-
-//   // Sync initial UI with current state
-//   radios.forEach((radio) => {
-//     radio.checked = radio.value === window.advancedBgMode;
-//   });
-
-//   const handleChange = (event) => {
-//     const value = event.target.value; // "off" or "grayscale"
-//     window.advancedBgMode = value;
-
-//     // Re-render with new background behavior
-//     if (typeof window.updateSketch === "function") {
-//       window.updateSketch();
-//     }
-//   };
-
-//   radios.forEach((radio) => {
-//     radio.addEventListener("change", handleChange);
-//   });
-// }
-
 function setupAdvancedBackgroundControls() {
   const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
   if (!radios.length) return;
@@ -265,9 +180,9 @@ function setupAdvancedBackgroundControls() {
   });
 
   const handleChange = (event) => {
-    const value = event.target.value; // "off" | "grayscale" | "oppositeHue" | "colorPicker"
+    const value = event.target.value; // "off" | "grayscale" | "hslOffset" | "colorPicker"
     window.advancedBgMode = value;
-    toggleAdvancedBgColorPickerVisibility();
+    toggleAdvancedBgControlsVisibility();
 
     if (typeof window.updateSketch === "function") {
       window.updateSketch();
@@ -278,7 +193,10 @@ function setupAdvancedBackgroundControls() {
     radio.addEventListener("change", handleChange);
   });
 
-  // Set up colour-picker input
+  // HSL offset sliders
+  setupHslOffsetControls();
+
+  // Colour picker input
   const colorInput = document.getElementById("advanced-bg-color-input");
   if (colorInput) {
     // Initialise from window.advancedBgColor (HSLA)
@@ -298,17 +216,107 @@ function setupAdvancedBackgroundControls() {
     });
   }
 
-  toggleAdvancedBgColorPickerVisibility();
+  toggleAdvancedBgControlsVisibility();
 }
 
-function toggleAdvancedBgColorPickerVisibility() {
+
+// function setupAdvancedBackgroundControls() {
+//   const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
+//   if (!radios.length) return;
+
+//   // Sync UI with current state
+//   radios.forEach((radio) => {
+//     radio.checked = radio.value === window.advancedBgMode;
+//   });
+
+//   const handleChange = (event) => {
+//     const value = event.target.value; // "off" | "grayscale" | "oppositeHue" | "colorPicker"
+//     window.advancedBgMode = value;
+//     toggleAdvancedBgColorPickerVisibility();
+
+//     if (typeof window.updateSketch === "function") {
+//       window.updateSketch();
+//     }
+//   };
+
+//   radios.forEach((radio) => {
+//     radio.addEventListener("change", handleChange);
+//   });
+
+//   // Set up colour-picker input
+//   const colorInput = document.getElementById("advanced-bg-color-input");
+//   if (colorInput) {
+//     // Initialise from window.advancedBgColor (HSLA)
+//     const [h, s, l] = window.advancedBgColor;
+//     const [r, g, b] = hslToRgb(h, s, l);
+//     colorInput.value = rgbToHex(r, g, b);
+
+//     colorInput.addEventListener("input", (event) => {
+//       const rgb = hexToRgb(event.target.value);
+//       if (!rgb) return;
+//       const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
+//       window.advancedBgColor = [hh, ss, ll, 1];
+
+//       if (typeof window.updateSketch === "function") {
+//         window.updateSketch();
+//       }
+//     });
+//   }
+
+//   toggleAdvancedBgColorPickerVisibility();
+// }
+
+function toggleAdvancedBgControlsVisibility() {
   const pickerControls = document.getElementById("advanced-bg-color-picker-controls");
-  if (!pickerControls) return;
+  const hslOffsetControls = document.getElementById("advanced-bg-hsl-offset-controls");
 
-  const shouldShow =
-    window.mode === "advanced" && window.advancedBgMode === "colorPicker";
+  const mode = window.advancedBgMode;
+  const isAdvanced = window.mode === "advanced";
 
-  pickerControls.style.display = shouldShow ? "block" : "none";
+  if (pickerControls) {
+    const showPicker = isAdvanced && mode === "colorPicker";
+    pickerControls.style.display = showPicker ? "block" : "none";
+  }
+
+  if (hslOffsetControls) {
+    const showHsl = isAdvanced && mode === "hslOffset";
+    hslOffsetControls.style.display = showHsl ? "block" : "none";
+  }
+}
+
+function setupHslOffsetControls() {
+  const pairs = [
+    { sliderId: "h-offset", inputId: "h-offset-value", prop: "hOffset", min: -180, max: 180 },
+    { sliderId: "s-offset", inputId: "s-offset-value", prop: "sOffset", min: -100, max: 100 },
+    { sliderId: "l-offset", inputId: "l-offset-value", prop: "lOffset", min: -100, max: 100 },
+  ];
+
+  pairs.forEach(({ sliderId, inputId, prop, min, max }) => {
+    const slider = document.getElementById(sliderId);
+    const input = document.getElementById(inputId);
+    if (!slider || !input) return;
+
+    // Initialise from window.*
+    const current = typeof window[prop] === "number" ? window[prop] : 0;
+    slider.value = current;
+    input.value = current;
+
+    const apply = (val) => {
+      let v = parseFloat(val);
+      if (isNaN(v)) v = 0;
+      v = Math.max(min, Math.min(max, v));
+      window[prop] = v;
+      slider.value = v;
+      input.value = v;
+
+      if (typeof window.updateSketch === "function") {
+        window.updateSketch();
+      }
+    };
+
+    slider.addEventListener("input", (e) => apply(e.target.value));
+    input.addEventListener("change", (e) => apply(e.target.value));
+  });
 }
 
 function updateModeUI() {
@@ -391,18 +399,6 @@ function setupSpaceSlider() {
         window.updateDensity();
       }, 200)
     );
-  }
-}
-
-function setupInvertRadios() {
-  const invertRadios = document.querySelectorAll('input[name="invert"]');
-  if (invertRadios.length > 0) {
-    invertRadios.forEach((elem) => {
-      elem.addEventListener("change", function (event) {
-        window.invert = event.target.value === "true";
-        window.updateSketch();
-      });
-    });
   }
 }
 
@@ -841,7 +837,6 @@ function resetAllSettings() {
   window.spaceCount = 0;
   window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
   window.colorCount = 2;
-  window.invert = true;
   window.LERP = true;
   window.startColor = [30, 100, 100, 1];  // HSLA
   window.middleColor = [45, 100, 50, 1]; // HSLA
@@ -851,6 +846,25 @@ function resetAllSettings() {
   window.useImageColors = false;
   window.mode = "normal";
   window.advancedBgMode = "off";
+  window.hOffset = 0;
+  window.sOffset = 0;
+  window.lOffset = 0;
+
+  const hOffset = document.getElementById("h-offset");
+  const hOffsetVal = document.getElementById("h-offset-value");
+  const sOffset = document.getElementById("s-offset");
+  const sOffsetVal = document.getElementById("s-offset-value");
+  const lOffset = document.getElementById("l-offset");
+  const lOffsetVal = document.getElementById("l-offset-value");
+  const bgModeOff = document.getElementById("advanced-bg-off");
+
+  if (hOffset) hOffset.value = 0;
+  if (hOffsetVal) hOffsetVal.value = 0;
+  if (sOffset) sOffset.value = 0;
+  if (sOffsetVal) sOffsetVal.value = 0;
+  if (lOffset) lOffset.value = 0;
+  if (lOffsetVal) lOffsetVal.value = 0;
+  if (bgModeOff) bgModeOff.checked = true;
 
   // Update UI elements
   const updateElement = (id, value) => {
@@ -875,7 +889,6 @@ function resetAllSettings() {
   updateElement("zero-value", window.zeroCount);
   updateElement("space-slider", window.spaceCount);
   updateElement("space-value", window.spaceCount);
-  updateElement("invert-true", true);
   updateElement("color-count-2", true);
   updateElement("lerp-true", true);
   updateElement("bg-black", true);

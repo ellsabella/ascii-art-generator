@@ -42,36 +42,59 @@
         </label>
       </div>
 
-      <div class="control-group advanced-only" id="advanced-bg-controls">
-        <h3>Advanced Background</h3>
+  <!-- Advanced background controls (only visible in Advanced mode) -->
+  <div class="control-group advanced-only" id="advanced-bg-controls">
+    <h3>Advanced Background</h3>
 
-        <label>
-          <input type="radio" name="advanced-bg-mode" id="advanced-bg-off" value="off" checked />
-          Flat background
-        </label>
+    <label>
+      <input type="radio" name="advanced-bg-mode" id="advanced-bg-off" value="off" checked />
+      Flat background
+    </label>
 
-        <label>
-          <input type="radio" name="advanced-bg-mode" id="advanced-bg-grayscale" value="grayscale" />
-          Grayscale pixels
-        </label>
+    <label>
+      <input type="radio" name="advanced-bg-mode" id="advanced-bg-grayscale" value="grayscale" />
+      Grayscale pixels
+    </label>
 
-        <label>
-          <input type="radio" name="advanced-bg-mode" id="advanced-bg-opposite-hue" value="oppositeHue" />
-          Opposite hue
-        </label>
+    <label>
+      <input type="radio" name="advanced-bg-mode" id="advanced-bg-hsl-offset" value="hslOffset" />
+      HSL offset
+    </label>
 
-        <label>
-          <input type="radio" name="advanced-bg-mode" id="advanced-bg-color-picker" value="colorPicker" />
-          Colour picker
-        </label>
+    <label>
+      <input type="radio" name="advanced-bg-mode" id="advanced-bg-color-picker" value="colorPicker" />
+      Colour picker
+    </label>
 
-        <!-- Only relevant when "Colour picker" is selected -->
-        <div id="advanced-bg-color-picker-controls">
-          <label for="advanced-bg-color-input">Pixel colour</label>
-          <input type="color" id="advanced-bg-color-input" />
-        </div>
-</div>
+    <!-- Only relevant when "HSL offset" is selected -->
+    <div id="advanced-bg-hsl-offset-controls">
+      <h4>HSL offsets</h4>
 
+      <label>
+        Hue offset (°)
+        <input type="range" id="h-offset" min="-180" max="180" value="0" />
+        <input type="number" id="h-offset-value" min="-180" max="180" value="0" />
+      </label>
+
+      <label>
+        Saturation offset
+        <input type="range" id="s-offset" min="-100" max="100" value="0" />
+        <input type="number" id="s-offset-value" min="-100" max="100" value="0" />
+      </label>
+
+      <label>
+        Lightness offset
+        <input type="range" id="l-offset" min="-100" max="100" value="0" />
+        <input type="number" id="l-offset-value" min="-100" max="100" value="0" />
+      </label>
+    </div>
+
+    <!-- Only relevant when "Colour picker" is selected -->
+    <div id="advanced-bg-color-picker-controls">
+      <label for="advanced-bg-color-input">Pixel colour</label>
+      <input type="color" id="advanced-bg-color-input" />
+    </div>
+  </div>
       <div class="control-group vertical-slider">
         <label for="cf">Contrast:</label>
         <div class="slider-with-input">
@@ -103,20 +126,6 @@
         <label for="space-slider">Append Spaces:</label>
         <input type="range" id="space-slider" min="0" max="12" value="0">
         <span id="space-value">0</span>
-      </div>
-
-      <div class="control-group">
-        <label>Invert:</label>
-        <div class="radio-group">
-          <div class="radio-option">
-            <input type="radio" id="invert-true" name="invert" value="true" checked>
-            <label for="invert-true">True</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="invert-false" name="invert" value="false">
-            <label for="invert-false">False</label>
-          </div>
-        </div>
       </div>
 
       <div class="control-group">
