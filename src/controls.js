@@ -1,6 +1,6 @@
 // import { extractDominantColors, assignColorsAndBackground, rgbToHsl, isGrayscale } from "./colorUtils.js";
 import p5 from "p5";
-import { hslToRgb, rgbToHsl, hexToRgb, rgbToHex } from "./colorUtils.js";
+import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
 
 function debounce(func, delay) {
   let timeout;
@@ -11,11 +11,13 @@ function debounce(func, delay) {
 }
 
 export function initializeControls(p5Instance) {
-  window.customBgColor = window.customBgColor || [0, 0, 100, 1]; // HSLA
 
-  if (!window.advancedBgMode) {
-    window.advancedBgMode = "off"; // "off" | "grayscale" | "hslOffset" | "colorPicker"
-  }
+  // Background defaults (flat black, fully opaque)
+  if (!window.bgColorRGB) window.bgColorRGB = [0, 0, 0];
+  if (typeof window.bgAlpha !== "number") window.bgAlpha = 1;
+
+  // Background style (reusing existing variable)
+  if (!window.advancedBgMode) window.advancedBgMode = "off";
 
   // Base HSLA for colour-picker mode (example default)
   if (!window.advancedBgColor) {
@@ -23,9 +25,9 @@ export function initializeControls(p5Instance) {
   }
 
   // HSL offsets for HSL offset mode
-  if (typeof window.hOffset !== "number") window.hOffset = -90; // degrees
-  if (typeof window.sOffset !== "number") window.sOffset = -20; // -100..100
-  if (typeof window.lOffset !== "number") window.lOffset = -200; // -100..100
+  if (typeof window.hOffset !== "number") window.hOffset = 0;
+  if (typeof window.sOffset !== "number") window.sOffset = 0;
+  if (typeof window.lOffset !== "number") window.lOffset = 0;
 
   // File upload
   setupFileUpload(p5Instance);
@@ -36,11 +38,8 @@ export function initializeControls(p5Instance) {
   // Reset settings button
   setupResetSettings();
 
-  // Mode toggle (Normal / Advanced)
-  setupModeToggle();
-
-  // advanced background mode toggle
-  setupAdvancedBackgroundControls();
+  // Background controls
+  setupBackgroundControls();
 
   // Debounced MP slider and input
   setupMPSlider();
@@ -66,20 +65,20 @@ export function initializeControls(p5Instance) {
   // Color extraction toggle
   setupColorExtractionToggle();
 
-  // Color controls
-  setupColorControls();
+  // Character color pickers
+  setupCharColorPickers()
 
-  // Background color radio buttons and custom BG sliders
-  setupBackgroundColorControls();
-
-  // Initial setup
-  toggleColorControls();
+  // Color count radios
+  setupColorCountRadios(); 
 
   if (window.sketchReady) {
     updateColorControls();
   } else {
     window.addEventListener("sketchReady", updateColorControls);
   }
+
+  // Initial setup
+  toggleColorControls();
 }
 
 function setupFileUpload(p5Instance) {
@@ -115,174 +114,119 @@ function setupResetSettings() {
   }
 }
 
-function setupModeToggle() {
-  const modeNormal = document.getElementById("mode-normal");
-  const modeAdvanced = document.getElementById("mode-advanced");
+function setupBackgroundControls() {
+  // ---- Elements
+  const bgColorInput = document.getElementById("bg-color-input");
+  const bgAlphaSlider = document.getElementById("bg-alpha");
+  const bgAlphaValue = document.getElementById("bg-alpha-value");
 
-  if (!modeNormal || !modeAdvanced) {
-    console.warn("Mode toggle elements not found in DOM.");
-    return;
-  }
+  const bgModeRadios = document.querySelectorAll('input[name="advanced-bg-mode"]');
 
-  if (!window.mode) {
-    window.mode = "normal";
-  }
+  const hslOffsetControls = document.getElementById("advanced-bg-hsl-offset-controls");
+  const pixelPickerControls = document.getElementById("advanced-bg-color-picker-controls");
+  const pixelColorInput = document.getElementById("advanced-bg-color-input");
 
-  modeNormal.checked = window.mode === "normal";
-  modeAdvanced.checked = window.mode === "advanced";
+  // ---- Defaults (source of truth)
+  if (!Array.isArray(window.bgColorRGB)) window.bgColorRGB = [0, 0, 0];
+  if (typeof window.bgAlpha !== "number") window.bgAlpha = 1;
 
-  const handleChange = (event) => {
-    const value = event.target.value; // "normal" or "advanced"
-    window.mode = value;
+  if (!window.advancedBgMode) window.advancedBgMode = "off";
 
-    if (value === "advanced") {
-      // Default Advanced mode to grayscale pixels
-      window.advancedBgMode = "grayscale";
+  // Pixel colour used only in colorPicker pixel mode
+  if (!Array.isArray(window.pixelColorRGB)) window.pixelColorRGB = [120, 170, 255]; // sensible default
 
-      const grayRadio = document.getElementById("advanced-bg-grayscale");
-      const offRadio = document.getElementById("advanced-bg-off");
-      if (grayRadio) grayRadio.checked = true;
-      if (offRadio) offRadio.checked = false;
+  if (typeof window.hOffset !== "number") window.hOffset = 0;
+  if (typeof window.sOffset !== "number") window.sOffset = 0;
+  if (typeof window.lOffset !== "number") window.lOffset = 0;
 
-    } else {
-      // Back to Normal: no advanced backgrounds, black flat bg
-      window.advancedBgMode = "off";
-      window.bgColorOption = "black";
+  // ---- Helpers
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-      const bgBlackRadio = document.getElementById("bg-black");
-      if (bgBlackRadio) bgBlackRadio.checked = true;
-
-      const customBgColorDiv = document.getElementById("custom-bg-color");
-      if (customBgColorDiv) {
-        customBgColorDiv.style.display = "none";
-      }
-    }
-
-    updateModeUI();
-    if (typeof window.updateSketch === "function") {
-      window.updateSketch();
-    }
+  const syncFlatBgPickerUI = () => {
+    if (!bgColorInput) return;
+    const [r, g, b] = window.bgColorRGB;
+    bgColorInput.value = rgbToHex(r, g, b);
   };
 
-  modeNormal.addEventListener("change", handleChange);
-  modeAdvanced.addEventListener("change", handleChange);
-
-  updateModeUI();
-}
-
-function setupAdvancedBackgroundControls() {
-  const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
-  if (!radios.length) return;
-
-  // Sync UI with current state
-  radios.forEach((radio) => {
-    radio.checked = radio.value === window.advancedBgMode;
-  });
-
-  const handleChange = (event) => {
-    const value = event.target.value; // "off" | "grayscale" | "hslOffset" | "colorPicker"
-    window.advancedBgMode = value;
-    toggleAdvancedBgControlsVisibility();
-
-    if (typeof window.updateSketch === "function") {
-      window.updateSketch();
-    }
+  const syncPixelPickerUI = () => {
+    if (!pixelColorInput) return;
+    const [r, g, b] = window.pixelColorRGB;
+    pixelColorInput.value = rgbToHex(r, g, b);
   };
 
-  radios.forEach((radio) => {
-    radio.addEventListener("change", handleChange);
-  });
+  const syncAlphaUI = () => {
+    const pct = Math.round(clamp(window.bgAlpha, 0, 1) * 100);
+    if (bgAlphaSlider) bgAlphaSlider.value = pct;
+    if (bgAlphaValue) bgAlphaValue.value = pct;
+  };
 
-  // HSL offset sliders
-  setupHslOffsetControls();
+  const setStyleUI = (mode) => {
+    // Sync radios
+    if (bgModeRadios && bgModeRadios.length) {
+      bgModeRadios.forEach((r) => (r.checked = r.value === mode));
+    }
 
-  // Colour picker input
-  const colorInput = document.getElementById("advanced-bg-color-input");
-  if (colorInput) {
-    // Initialise from window.advancedBgColor (HSLA)
-    const [h, s, l] = window.advancedBgColor;
-    const [r, g, b] = hslToRgb(h, s, l);
-    colorInput.value = rgbToHex(r, g, b);
+    // Show/hide subcontrols
+    if (hslOffsetControls) hslOffsetControls.style.display = mode === "hslOffset" ? "block" : "none";
+    if (pixelPickerControls) pixelPickerControls.style.display = mode === "colorPicker" ? "block" : "none";
+  };
 
-    colorInput.addEventListener("input", (event) => {
-      const rgb = hexToRgb(event.target.value);
+  // ---- Init UI values
+  syncFlatBgPickerUI();
+  syncPixelPickerUI();
+  syncAlphaUI();
+  setStyleUI(window.advancedBgMode);
+
+  // ---- Wire: flat background colour picker
+  if (bgColorInput) {
+    bgColorInput.addEventListener("input", (e) => {
+      const rgb = hexToRgb(e.target.value);
       if (!rgb) return;
-      const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
-      window.advancedBgColor = [hh, ss, ll, 1];
-
-      if (typeof window.updateSketch === "function") {
-        window.updateSketch();
-      }
+      window.bgColorRGB = [rgb.r, rgb.g, rgb.b];
+      window.updateSketch?.();
     });
   }
 
-  toggleAdvancedBgControlsVisibility();
-}
-
-
-// function setupAdvancedBackgroundControls() {
-//   const radios = document.querySelectorAll('input[name="advanced-bg-mode"]');
-//   if (!radios.length) return;
-
-//   // Sync UI with current state
-//   radios.forEach((radio) => {
-//     radio.checked = radio.value === window.advancedBgMode;
-//   });
-
-//   const handleChange = (event) => {
-//     const value = event.target.value; // "off" | "grayscale" | "oppositeHue" | "colorPicker"
-//     window.advancedBgMode = value;
-//     toggleAdvancedBgColorPickerVisibility();
-
-//     if (typeof window.updateSketch === "function") {
-//       window.updateSketch();
-//     }
-//   };
-
-//   radios.forEach((radio) => {
-//     radio.addEventListener("change", handleChange);
-//   });
-
-//   // Set up colour-picker input
-//   const colorInput = document.getElementById("advanced-bg-color-input");
-//   if (colorInput) {
-//     // Initialise from window.advancedBgColor (HSLA)
-//     const [h, s, l] = window.advancedBgColor;
-//     const [r, g, b] = hslToRgb(h, s, l);
-//     colorInput.value = rgbToHex(r, g, b);
-
-//     colorInput.addEventListener("input", (event) => {
-//       const rgb = hexToRgb(event.target.value);
-//       if (!rgb) return;
-//       const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
-//       window.advancedBgColor = [hh, ss, ll, 1];
-
-//       if (typeof window.updateSketch === "function") {
-//         window.updateSketch();
-//       }
-//     });
-//   }
-
-//   toggleAdvancedBgColorPickerVisibility();
-// }
-
-function toggleAdvancedBgControlsVisibility() {
-  const pickerControls = document.getElementById("advanced-bg-color-picker-controls");
-  const hslOffsetControls = document.getElementById("advanced-bg-hsl-offset-controls");
-
-  const mode = window.advancedBgMode;
-  const isAdvanced = window.mode === "advanced";
-
-  if (pickerControls) {
-    const showPicker = isAdvanced && mode === "colorPicker";
-    pickerControls.style.display = showPicker ? "block" : "none";
+  // ---- Wire: pixel colour picker (used only for colorPicker pixel mode)
+  if (pixelColorInput) {
+    pixelColorInput.addEventListener("input", (e) => {
+      const rgb = hexToRgb(e.target.value);
+      if (!rgb) return;
+      window.pixelColorRGB = [rgb.r, rgb.g, rgb.b];
+      window.updateSketch?.();
+    });
   }
 
-  if (hslOffsetControls) {
-    const showHsl = isAdvanced && mode === "hslOffset";
-    hslOffsetControls.style.display = showHsl ? "block" : "none";
+  // ---- Wire: alpha (applies to BOTH flat background and pixel backgrounds)
+  const applyAlphaPct = (pct) => {
+    const v = clamp(Number(pct), 0, 100);
+    window.bgAlpha = v / 100;
+    if (bgAlphaSlider) bgAlphaSlider.value = v;
+    if (bgAlphaValue) bgAlphaValue.value = v;
+    window.updateSketch?.();
+  };
+
+  if (bgAlphaSlider) bgAlphaSlider.addEventListener("input", (e) => applyAlphaPct(e.target.value));
+  if (bgAlphaValue) bgAlphaValue.addEventListener("change", (e) => applyAlphaPct(e.target.value));
+
+  // ---- Wire: mode radios
+  if (bgModeRadios && bgModeRadios.length) {
+    bgModeRadios.forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        window.advancedBgMode = e.target.value; // off | hslOffset | colorPicker
+        setStyleUI(window.advancedBgMode);
+        window.updateSketch?.();
+      });
+    });
   }
+
+  // ---- Wire HSL offset sliders
+  setupHslOffsetControls();
+
+  // Final visibility sync
+  setStyleUI(window.advancedBgMode);
 }
+
 
 function setupHslOffsetControls() {
   const pairs = [
@@ -317,24 +261,6 @@ function setupHslOffsetControls() {
     slider.addEventListener("input", (e) => apply(e.target.value));
     input.addEventListener("change", (e) => apply(e.target.value));
   });
-}
-
-function updateModeUI() {
-  const isAdvanced = window.mode === "advanced";
-
-  // Show/hide advanced-only controls
-  const advancedControls = document.querySelectorAll(".advanced-only");
-  advancedControls.forEach((el) => {
-    el.style.display = isAdvanced ? "" : "none";
-  });
-
-  // Keep this part: custom background controls should still depend on bgColorOption
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (customBgColorDiv) {
-    customBgColorDiv.style.display =
-      window.bgColorOption === "custom" && !isAdvanced ? "block" : "none";
-    // (If you want custom bg visible even in advanced, remove `&& !isAdvanced`.)
-  }
 }
 
 function setupMPSlider() {
@@ -460,243 +386,50 @@ function setupColorExtractionToggle() {
       toggleColorControls();
       
       if (window.useImageColors) {
-        // Switch background to black
-        window.bgColorOption = "black";
-        const blackBgRadio = document.getElementById("bg-black");
-        if (blackBgRadio) {
-          blackBgRadio.checked = true;
-        }
-        
-        // Hide custom background color controls
-        const customBgColorDiv = document.getElementById("custom-bg-color");
-        if (customBgColorDiv) {
-          customBgColorDiv.style.display = "none";
-        }
-        
-        window.extractColors();
-      } else {
-        updateColorControlsVisibility();
-      }
-      
-      window.updateSketch();
-    });
-  }
-}
 
-function setupColorControls() {
-  const colorControls = [
-    { id: "start-color", element: null, listeners: [] },
-    { id: "middle-color", element: null, listeners: [] },
-    { id: "end-color", element: null, listeners: [] },
-    { id: "color-count", element: null, listeners: [] },
-    { id: "lerp-control", element: null, listeners: [] }
-  ];
+          // Set flat background to black (optional)
+          window.bgColorRGB = [0, 0, 0];
+          window.bgAlpha = 1;
 
-  const colorCountRadios = document.querySelectorAll('input[name="color-count"]');
-  colorCountRadios.forEach(radio => {
-    radio.addEventListener('change', function(event) {
-      window.colorCount = parseInt(event.target.value, 10);
-      updateColorControlsVisibility();
-      window.updateSketch();
-    });
-  });
+          const bgColorInput = document.getElementById("bg-color-input");
+          if (bgColorInput) bgColorInput.value = "#000000";
 
-  colorControls.forEach(control => {
-    control.element = document.getElementById(control.id);
-    if (control.element) {
-      const inputs = control.element.querySelectorAll('input, .color-slider-container');
-      inputs.forEach(input => {
-        const listener = createColorControlListener(input);
-        control.listeners.push({ input, listener });
-        
-        if (input.classList.contains('color-slider-container')) {
-          setupColorSlider(input);
+          const bgAlpha = document.getElementById("bg-alpha");
+          const bgAlphaValue = document.getElementById("bg-alpha-value");
+          if (bgAlpha) bgAlpha.value = 100;
+          if (bgAlphaValue) bgAlphaValue.value = 100;
+
+          window.extractColors();
         } else {
-          input.addEventListener('change', listener);
-        }
-      });
-    }
-  });
-
-  // SVG download button
-  const downloadSvgButton = document.getElementById("download-svg");
-  if (downloadSvgButton) {
-    downloadSvgButton.addEventListener("click", window.createAndDownloadSVG);
-  }
-
-  window.colorControls = colorControls;  // Make colorControls accessible globally
-}
-
-function setupColorSlider(container) {
-  const slider = container.querySelector(".color-slider");
-  const valueInput = container.querySelector(".color-value-input");
-  
-  if (slider && valueInput) {
-    const updateColor = debounce((value) => {
-      slider.value = value;
-      valueInput.value = value;
-      const color = slider.dataset.color;
-      const channel = slider.dataset.channel;
-      const index = ["h", "s", "l", "a"].indexOf(channel);
-      
-      if (color === "bg-color") {
-        window.customBgColor[index] = channel === "a" ? parseFloat(value) : parseInt(value, 10);
-      } else {
-        window[color + "Color"][index] = channel === "a" ? parseFloat(value) : parseInt(value, 10);
-      }
-      window.updateSketch();
-    }, 200);
-
-    slider.addEventListener("input", (event) => {
-      updateColor(event.target.value);
-    });
-
-    valueInput.addEventListener("change", (event) => {
-      let value = parseFloat(event.target.value);
-      const max = parseFloat(slider.max);
-      const min = parseFloat(slider.min);
-      value = Math.min(max, Math.max(min, value));
-      updateColor(value);
-    });
-  }
-}
-
-function setupBackgroundColorControls() {
-  const bgColorRadios = document.querySelectorAll('input[name="bg-color"]');
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (bgColorRadios.length > 0) {
-    bgColorRadios.forEach((elem) => {
-      elem.addEventListener("change", function (event) {
-        window.bgColorOption = event.target.value;
-        if (event.target.value === "custom") {
-          customBgColorDiv.style.display = "block";
-          initializeCustomBgColorSliders();
-        } else {
-          customBgColorDiv.style.display = "none";
-        }
-        window.updateSketch();
-      });
-    });
-  }
-
-  // Set up custom background color sliders
-  const bgColorSliders = document.querySelectorAll('#custom-bg-color .color-slider');
-  bgColorSliders.forEach(slider => {
-    slider.addEventListener('input', updateCustomBgColor);
-  });
-
-  const bgColorInputs = document.querySelectorAll('#custom-bg-color .color-value-input');
-  bgColorInputs.forEach(input => {
-    input.addEventListener('change', updateCustomBgColor);
-  });
-}
-
-function createColorControlListener(input) {
-  return function(event) {
-    const inputType = input.type;
-    const inputName = input.name;
-    const inputValue = event.target.value;
-
-    switch (inputType) {
-      case 'radio':
-        if (inputName === 'color-count') {
-          window.colorCount = parseInt(inputValue, 10);
           updateColorControlsVisibility();
-        } else if (inputName === 'lerp') {
-          window.LERP = inputValue === 'true';
         }
-        break;
       
-      case 'range':
-      case 'number':
-        const colorType = input.closest('.color-slider-container').dataset.color;
-        const channel = input.dataset.channel;
-        const index = ['h', 's', 'l', 'a'].indexOf(channel);
-        
-        if (colorType === 'bg-color') {
-          updateCustomBgColor(event);
-          return; // We've handled the custom background color, so we can return early
-        } else {
-          const colorProperty = colorType + 'Color';
-          if (!window[colorProperty]) {
-            window[colorProperty] = [0, 0, 0, 1]; // Default HSLA values
-          }
-          window[colorProperty][index] = channel === 'a' ? parseFloat(inputValue) : parseInt(inputValue, 10);
-        }
-        break;
-      
-      default:
-        console.warn('Unhandled input type:', inputType);
-    }
-
-    window.updateSketch();
-  };
+      window.updateSketch();
+    });
+  }
 }
 
 function updateColorControlsVisibility() {
-  const colorCount = window.colorCount;
-  const middleColor = document.getElementById('middle-color');
-  const endColor = document.getElementById('end-color');
-  const lerpControl = document.getElementById('lerp-control');
-
-  if (middleColor && endColor && lerpControl) {
-    switch (colorCount) {
-      case 1:
-        middleColor.style.display = 'none';
-        endColor.style.display = 'none';
-        lerpControl.style.display = 'none';
-        break;
-      case 2:
-        middleColor.style.display = 'none';
-        endColor.style.display = 'block';
-        lerpControl.style.display = 'block';
-        break;
-      case 3:
-        middleColor.style.display = 'block';
-        endColor.style.display = 'block';
-        lerpControl.style.display = 'none';
-        break;
-      default:
-        console.warn('Unexpected color count:', colorCount);
-    }
-  }
+  updateCharPickerVisibility();
 }
 
 function toggleColorControls() {
-  const useImageColors = window.useImageColors;
-  const colorControlIds = ['start-color', 'middle-color', 'end-color'];
-  
-  colorControlIds.forEach(id => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.style.display = useImageColors ? 'none' : 'block';
-    }
-  });
+  const useImageColors = !!window.useImageColors;
 
-  const colorCountRadios = document.querySelector('.control-group:has([name="color-count"])');
-  if (colorCountRadios) {
-    colorCountRadios.style.display = useImageColors ? 'none' : 'block';
-  }
+  const pickerWrap = document.getElementById("char-color-pickers");
+  if (pickerWrap) pickerWrap.style.display = useImageColors ? "none" : "block";
 
-  const lerpControl = document.getElementById('lerp-control');
-  if (lerpControl) {
-    lerpControl.style.display = useImageColors ? 'none' : 'block';
-  }
+  const colorCountGroup = document.getElementById("color-count-group");
+  if (colorCountGroup) colorCountGroup.style.display = useImageColors ? "none" : "block";
+
+  const lerpControl = document.getElementById("lerp-control");
+  if (lerpControl) lerpControl.style.display = useImageColors ? "none" : (Number(window.colorCount ?? 2) === 2 ? "block" : "none");
+
+  const msg = document.getElementById("color-extraction-message");
+  if (msg) msg.style.display = useImageColors ? "block" : "none";
 
   if (!useImageColors) {
-    updateColorControlsVisibility();
-  }
-
-  // Show/hide color extraction message
-  const colorExtractionMessage = document.getElementById("color-extraction-message");
-  if (colorExtractionMessage) {
-    colorExtractionMessage.style.display = useImageColors ? 'block' : 'none';
-  }
-
-  // Always show custom background color controls if custom background is selected
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (customBgColorDiv) {
-    customBgColorDiv.style.display = window.bgColorOption === "custom" ? "block" : "none";
+    updateCharPickerVisibility(); // <-- critical
   }
 }
 
@@ -736,214 +469,276 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
     .catch((error) => console.error("Error loading image:", error));
 }
 
+
+function setupCharColorPickers() {
+  const bindPicker = (key) => {
+    const prop = key + "Color"; // startColor/middleColor/endColor
+
+    const colorInput = document.getElementById(`${key}-color-input`);
+    const alphaSlider = document.getElementById(`${key}-alpha`);
+    const alphaValue = document.getElementById(`${key}-alpha-value`);
+
+    if (!Array.isArray(window[prop])) {
+      // Sensible defaults if missing
+      window[prop] = key === "start" ? [30, 100, 100, 1]
+                : key === "middle" ? [45, 100, 50, 1]
+                : [0, 0, 33, 1];
+    }
+
+    // Init UI from HSLA
+    const [h, s, l, a = 1] = window[prop];
+    const [r, g, b] = hslToRgb(h, s, l);
+
+    if (colorInput) colorInput.value = rgbToHex(r, g, b);
+
+    const aPct = Math.round(a * 100);
+    if (alphaSlider) alphaSlider.value = aPct;
+    if (alphaValue) alphaValue.value = aPct;
+
+    // Color picker -> update HSLA (preserve alpha)
+    if (colorInput) {
+      colorInput.addEventListener("input", (e) => {
+        const rgb = hexToRgb(e.target.value);
+        if (!rgb) return;
+
+        const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
+        const currentA = window[prop]?.[3] ?? 1;
+        window[prop] = [hh, ss, ll, currentA];
+        window.updateSketch?.();
+      });
+    }
+
+    // Alpha controls -> update only A
+    const applyAlpha = (pct) => {
+      const v = Math.max(0, Math.min(100, Number(pct)));
+      if (alphaSlider) alphaSlider.value = v;
+      if (alphaValue) alphaValue.value = v;
+
+      const [hh, ss, ll] = window[prop];
+      window[prop] = [hh, ss, ll, v / 100];
+      window.updateSketch?.();
+    };
+
+    if (alphaSlider) alphaSlider.addEventListener("input", (e) => applyAlpha(e.target.value));
+    if (alphaValue) alphaValue.addEventListener("change", (e) => applyAlpha(e.target.value));
+  };
+
+  bindPicker("start");
+  bindPicker("middle");
+  bindPicker("end");
+
+  // Ensure middle/end pickers are shown/hidden correctly on load
+  updateCharPickerVisibility();
+}
+
+function updateCharPickerVisibility() {
+  const c = Number(window.colorCount ?? 2);
+
+  const start = document.getElementById("char-start-picker");
+  const mid = document.getElementById("char-middle-picker");
+  const end = document.getElementById("char-end-picker");
+  const lerpControl = document.getElementById("lerp-control");
+
+  // If we can't find the new UI, fail silently
+  if (!start || !mid || !end) return;
+
+  // Start is always relevant (when not using image colours)
+  start.style.display = "block";
+
+  if (c === 1) {
+    mid.style.display = "none";
+    end.style.display = "none";
+    if (lerpControl) lerpControl.style.display = "none";
+  } else if (c === 2) {
+    mid.style.display = "none";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "block";
+  } else if (c === 3) {
+    mid.style.display = "block";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "none";
+  } else {
+    // Fallback: treat unknown as 2
+    mid.style.display = "none";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "block";
+  }
+}
+
+function setupColorCountRadios() {
+  const radios = document.querySelectorAll('input[name="color-count"]');
+  if (!radios.length) return;
+
+  // Initialise from whichever is checked in the DOM (or default to 2)
+  const checked = document.querySelector('input[name="color-count"]:checked');
+  window.colorCount = checked ? Number(checked.value) : Number(window.colorCount ?? 2);
+
+  // Sync UI immediately
+  updateCharPickerVisibility();
+
+  // Listen for changes
+  radios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.colorCount = Number(e.target.value);
+
+      // Only apply picker visibility when not using image colours
+      if (!window.useImageColors) {
+        updateCharPickerVisibility();
+      }
+
+      window.updateSketch?.();
+    });
+  });
+}
+
 function updateColorControls() {
   if (window.useImageColors) return;
 
   const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
   if (!colorCountRadio) return;
 
-  const colorCount = parseInt(colorCountRadio.value, 10);
-  const middleColor = document.getElementById("middle-color");
-  const endColor = document.getElementById("end-color");
+  window.colorCount = parseInt(colorCountRadio.value, 10);
 
-  window.colorCount = colorCount;
+  updateCharPickerVisibility();
 
-  if (middleColor && endColor) {
-    if (colorCount === 1) {
-      middleColor.style.display = "none";
-      endColor.style.display = "none";
-    } else if (colorCount === 2) {
-      middleColor.style.display = "none";
-      endColor.style.display = "block";
-    } else {
-      middleColor.style.display = "block";
-      endColor.style.display = "block";
-    }
-  }
-
-  if (window.sketchReady) {
-    window.updateSketch();
-  } else {
-    console.log("Sketch not ready, skipping updateSketch");
-  }
-}
-
-function initializeCustomBgColorSliders() {
-  if (!Array.isArray(window.customBgColor) || window.customBgColor.length !== 4) {
-    window.customBgColor = [0, 0, 0, 1];  // HSLA
-  }
-
-  const bgColorControls = document.querySelectorAll("#custom-bg-color .color-slider-container");
-
-  if (bgColorControls.length > 0) {
-    bgColorControls.forEach((container) => {
-      const slider = container.querySelector(".color-slider");
-      const input = container.querySelector(".color-value-input");
-
-      if (slider && input) {
-        const channelIndex = ["h", "s", "l", "a"].indexOf(slider.dataset.channel);
-        const value = window.customBgColor[channelIndex];
-        slider.value = value;
-        input.value = value;
-      }
-    });
-  }
-}
-
-function updateCustomBgColor(event) {
-  const channel = event.target.dataset.channel;
-  const value = parseFloat(event.target.value);
-  const index = ['h', 's', 'l', 'a'].indexOf(channel);
-
-  if (!window.customBgColor) {
-    window.customBgColor = [0, 0, 0, 1]; // Default HSLA values
-  }
-
-  window.customBgColor[index] = channel === 'a' ? value : Math.round(value);
-
-  // Update the corresponding slider or input
-  const sliderId = `bg-color-color-${channel}`;
-  const inputId = `${sliderId}-value`;
-  const slider = document.getElementById(sliderId);
-  const input = document.getElementById(inputId);
-
-  if (event.target.type === 'range') {
-    input.value = value;
-  } else {
-    slider.value = value;
-  }
-
-  window.updateSketch();
-}
-
-function updateColorSliders(colorName, colorValues) {
-  const channels = ['h', 's', 'l', 'a'];
-  channels.forEach((channel, index) => {
-    const slider = document.getElementById(`${colorName}-color-${channel}`);
-    const input = document.getElementById(`${colorName}-color-${channel}-value`);
-    if (slider && input) {
-      slider.value = colorValues[index];
-      input.value = colorValues[index];
-    }
-  });
+  if (window.sketchReady) window.updateSketch?.();
 }
 
 function resetAllSettings() {
-  // Reset global variables
+  // ---- Reset global variables (source of truth)
   window.mP = 141;
   window.cF = 0.55;
+
   window.baseDensity = "RRBZ21";
   window.zeroCount = 4;
   window.spaceCount = 0;
-  window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
+  window.density =
+    window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
+
   window.colorCount = 2;
   window.LERP = true;
-  window.startColor = [30, 100, 100, 1];  // HSLA
-  window.middleColor = [45, 100, 50, 1]; // HSLA
-  window.endColor = [0, 0, 33, 1];   // HSLA
-  window.bgColorOption = "black";
-  window.customBgColor = [0, 0, 100, 1];   // HSLA
+
+  // ASCII character colours (HSLA)
+  window.startColor = [30, 100, 100, 1];
+  window.middleColor = [45, 100, 50, 1];
+  window.endColor = [0, 0, 33, 1];
+
+  // Use image colours
   window.useImageColors = false;
-  window.mode = "normal";
-  window.advancedBgMode = "off";
+
+  // Pixel background modes
+  window.advancedBgMode = "off"; // off | colorPicker | hslOffset
   window.hOffset = 0;
   window.sOffset = 0;
   window.lOffset = 0;
 
-  const hOffset = document.getElementById("h-offset");
-  const hOffsetVal = document.getElementById("h-offset-value");
-  const sOffset = document.getElementById("s-offset");
-  const sOffsetVal = document.getElementById("s-offset-value");
-  const lOffset = document.getElementById("l-offset");
-  const lOffsetVal = document.getElementById("l-offset-value");
-  const bgModeOff = document.getElementById("advanced-bg-off");
+  // Flat background
+  window.bgColorRGB = [0, 0, 0];
+  window.bgAlpha = 1;
 
-  if (hOffset) hOffset.value = 0;
-  if (hOffsetVal) hOffsetVal.value = 0;
-  if (sOffset) sOffset.value = 0;
-  if (sOffsetVal) sOffsetVal.value = 0;
-  if (lOffset) lOffset.value = 0;
-  if (lOffsetVal) lOffsetVal.value = 0;
-  if (bgModeOff) bgModeOff.checked = true;
+  // Gradient pixel base colour (keep a sensible default)
+  // If you want this to reset to a specific colour, set it explicitly here.
+  if (!window.advancedBgColor) window.advancedBgColor = [210, 80, 50, 1];
 
-  // Update UI elements
-  const updateElement = (id, value) => {
-    const element = document.getElementById(id);
-    if (element) {
-      if (element.type === 'checkbox' || element.type === 'radio') {
-        element.checked = value;
-      } else if (element.tagName === 'INPUT' || element.tagName === 'SELECT') {
-        element.value = value;
-      } else {
-        element.textContent = value;
-      }
-    }
+  // ---- Helper for simple UI syncing
+  const setValue = (id, value) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value;
   };
 
-  updateElement("mp", window.mP);
-  updateElement("mp-value", window.mP);
-  updateElement("cf", window.cF * 100);
-  updateElement("cf-value", window.cF * 100);
-  updateElement("density-input", window.baseDensity);
-  updateElement("zero-slider", window.zeroCount);
-  updateElement("zero-value", window.zeroCount);
-  updateElement("space-slider", window.spaceCount);
-  updateElement("space-value", window.spaceCount);
-  updateElement("color-count-2", true);
-  updateElement("lerp-true", true);
-  updateElement("bg-black", true);
-  updateElement("mode-normal", true);
-  updateElement("advanced-bg-off", true);
-
-  // Update color extraction toggle
-  const colorExtractionToggle = document.getElementById("color-extraction-toggle");
-  if (colorExtractionToggle) {
-    colorExtractionToggle.checked = false;
-  }
-
-  // Update color sliders
-  const updateColorSliders = (colorName, colorValues) => {
-    ['h', 's', 'l', 'a'].forEach((channel, index) => {
-      updateElement(`${colorName}-color-${channel}`, colorValues[index]);
-      updateElement(`${colorName}-color-${channel}-value`, colorValues[index]);
-    });
+  const setChecked = (id, checked) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.checked = !!checked;
   };
 
-  updateColorSliders("start", window.startColor);
-  updateColorSliders("middle", window.middleColor);
-  updateColorSliders("end", window.endColor);
-  updateColorSliders("bg-color", window.customBgColor);
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+  };
 
-  // Hide custom background color controls
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (customBgColorDiv) {
-    customBgColorDiv.style.display = "none";
-  }
+  // ---- Core sliders/inputs
+  setValue("mp", window.mP);
+  setValue("mp-value", window.mP);
 
-  // Reset columns safely
+  setValue("cf", Math.round(window.cF * 100));
+  setValue("cf-value", Math.round(window.cF * 100));
+
+  setValue("density-input", window.baseDensity);
+
+  setValue("zero-slider", window.zeroCount);
+  setText("zero-value", String(window.zeroCount));
+
+  setValue("space-slider", window.spaceCount);
+  setText("space-value", String(window.spaceCount));
+
+  // ---- Colour count + LERP radios
+  setChecked("color-count-2", true);
+  setChecked("lerp-true", true);
+
+  // ---- Use Image Colors toggle + message
+  setChecked("color-extraction-toggle", false);
+
+  // Ensure extraction message is hidden
+  const msg = document.getElementById("color-extraction-message");
+  if (msg) msg.style.display = "none";
+
+  // ---- Background: flat colour + alpha
+  setValue("bg-color-input", "#000000");
+  setValue("bg-alpha", 100);
+  setValue("bg-alpha-value", 100);
+
+  // ---- Background style radios
+  setChecked("bg-style-off", true);
+  setChecked("bg-style-color-picker", false);
+  setChecked("bg-style-hsl-offset", false);
+
+  // ---- Pixel mode subcontrols: hide both
+  const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
+  const pickPanel = document.getElementById("advanced-bg-color-picker-controls");
+  if (hslPanel) hslPanel.style.display = "none";
+  if (pickPanel) pickPanel.style.display = "none";
+
+  // ---- Reset HSL offset controls
+  setValue("h-offset", 0);
+  setValue("h-offset-value", 0);
+  setValue("s-offset", 0);
+  setValue("s-offset-value", 0);
+  setValue("l-offset", 0);
+  setValue("l-offset-value", 0);
+
+  // ---- Sync ASCII colour pickers UI (NO rebinding)
+  syncCharColorPickersUI();
+
+  // ---- Reset columns safely
   if (typeof window.updateColumns === "function") {
     window.updateColumns(150);
   } else {
-    console.warn("window.updateColumns is not a function. Falling back to direct assignment.");
     window.gridColumns = 150;
-    updateElement("columns", 150);
-    updateElement("columns-value", 150);
+    setValue("columns", 150);
+    setValue("columns-value", 150);
   }
 
-  // Update density and trigger sketch update
+  // ---- Ensure correct visibility of pickers vs image colours
+  if (typeof toggleColorControls === "function") {
+    toggleColorControls();
+  }
+
+  if (typeof updateCharPickerVisibility === "function") {
+    updateCharPickerVisibility();
+  }
+
+  // ---- Recompute density (this calls updateSketch internally in your architecture)
   if (typeof window.updateDensity === "function") {
     window.updateDensity();
-  } else {
-    console.warn("window.updateDensity is not a function.");
-  }
-
-  if (typeof window.updateSketch === "function") {
+  } else if (typeof window.updateSketch === "function") {
     window.updateSketch();
-  } else {
-    console.warn("window.updateSketch is not a function.");
   }
 
   console.log("All settings have been reset to default values.");
 }
 
-document.addEventListener("DOMContentLoaded", () => initializeControls(window.p5Instance));
+
+// document.addEventListener("DOMContentLoaded", () => initializeControls(window.p5Instance));
