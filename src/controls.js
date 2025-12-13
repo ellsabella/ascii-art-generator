@@ -131,7 +131,7 @@ function setupResetImage(p5Instance) {
   const resetButton = document.getElementById("reset-image");
   if (resetButton) {
     resetButton.addEventListener("click", function () {
-      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sleep.png";
+      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sun.png";
       loadNewImage(defaultImage, p5Instance, true);
     });
   }
