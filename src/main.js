@@ -122,7 +122,7 @@ function createSketch(p) {
 
   p.preload = function () {
     const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
-    const defaultImagePath = import.meta.env.VITE_DEFAULT_IMAGE;
+    const defaultImagePath = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sun.png";
 
     font = p.loadFont(defaultFontPath, () => {
       console.log("Font loaded successfully.");
