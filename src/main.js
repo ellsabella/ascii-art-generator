@@ -26,10 +26,6 @@ function createSketch(p) {
   window.startColor = [30, 100, 100, 1];  // HSLA
   window.middleColor = [45, 100, 50, 1]; // HSLA
   window.endColor = [0, 0, 33, 1];   // HSLA
-  window.bgColorOption = "black";
-  window.customBgColor = [0, 0, 0, 1];   // HSLA
-  window.advancedBgMode = window.advancedBgMode || "off";
-  window.advancedBgColor = window.advancedBgColor || [210, 80, 50, 1];
   if (typeof window.hOffset !== "number") window.hOffset = 0;
   if (typeof window.sOffset !== "number") window.sOffset = 0;
   if (typeof window.lOffset !== "number") window.lOffset = 0;
@@ -97,8 +93,8 @@ function createSketch(p) {
           console.log("Using image colors");
         }
         
-        const bgColor = getBgColor();
-        p.background(bgColor);
+        // const bgColor = getBgColor();
+        // p.background(bgColor);
         
         if (typeof drawAsciiArt === "function") {
           drawAsciiArt();
@@ -183,7 +179,8 @@ function createSketch(p) {
     p.textAlign(p.CENTER, p.CENTER);
 
     createOffscreenBuffer();
-    updateColorMap(p, window);
+    // updateColorMap(p, window);
+    colorMap = updateColorMap(p, window);
 
     window.sketchReady = true;
     window.dispatchEvent(new Event("sketchReady"));
@@ -238,163 +235,159 @@ function createSketch(p) {
     }
   }
 
-function drawAsciiArt(graphics = null) {
-  console.log("Drawing ASCII art, graphics null?", graphics === null);
+  function drawAsciiArt(graphics = null) {
+    console.log("Drawing ASCII art, graphics null?", graphics === null);
 
-  const isOffscreen = graphics !== null;
-  const canvas = isOffscreen ? graphics : p;
-  const imgToUse = isOffscreen ? highResImg : window.img;
+    const isOffscreen = graphics !== null;
+    const canvas = isOffscreen ? graphics : p;
+    const imgToUse = isOffscreen ? highResImg : window.img;
 
-  // ---- Flat background (ALWAYS) uses bgColorRGB + bgAlpha
-  const [br, bg, bb] = window.bgColorRGB || [0, 0, 0];
-  const bgA = Math.round((window.bgAlpha ?? 1) * 255);
-  canvas.background(br, bg, bb, bgA);
-  canvas.textFont(font);
+    // ---- Flat background (ALWAYS) uses bgColorRGB + bgAlpha
+    const [br, bg, bb] = window.bgColorRGB || [0, 0, 0];
+    const bgA = Math.round((window.bgAlpha ?? 1) * 255);
+    canvas.background(br, bg, bb, bgA);
+    canvas.textFont(font);
 
-  const useOriginalGrid = window.useImageColors && gridCellColors;
+    const useOriginalGrid = window.useImageColors && gridCellColors;
 
-  let scaledGridColumns, scaledGridRows;
-  if (useOriginalGrid) {
-    // When using image colors, keep the original grid so indices line up
-    scaledGridColumns = window.gridColumns;
-    scaledGridRows = gridRows;
-  } else {
-    // Scale grid to the render target (e.g. offscreen PNG buffer)
-    const scaleX = canvas.width / p.width;
-    const scaleY = canvas.height / p.height;
-    scaledGridColumns = Math.floor(window.gridColumns * scaleX);
-    scaledGridRows = Math.floor(gridRows * scaleY);
-  }
+    let scaledGridColumns, scaledGridRows;
+    if (useOriginalGrid) {
+      // When using image colors, keep the original grid so indices line up
+      scaledGridColumns = window.gridColumns;
+      scaledGridRows = gridRows;
+    } else {
+      // Scale grid to the render target (e.g. offscreen PNG buffer)
+      const scaleX = canvas.width / p.width;
+      const scaleY = canvas.height / p.height;
+      scaledGridColumns = Math.floor(window.gridColumns * scaleX);
+      scaledGridRows = Math.floor(gridRows * scaleY);
+    }
 
-  const cellWidth = canvas.width / scaledGridColumns;
-  const cellHeight = canvas.height / scaledGridRows;
+    const cellWidth = canvas.width / scaledGridColumns;
+    const cellHeight = canvas.height / scaledGridRows;
 
-  const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
-  canvas.textSize(fontSize);
-  canvas.textAlign(p.CENTER, p.CENTER);
+    const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
+    canvas.textSize(fontSize);
+    canvas.textAlign(p.CENTER, p.CENTER);
 
-  imgToUse.loadPixels();
+    imgToUse.loadPixels();
 
-  const advancedBgMode = window.advancedBgMode || "off";
+    const advancedBgMode = window.advancedBgMode || "off";
 
-  for (let y = 0; y < scaledGridRows; y++) {
-    for (let x = 0; x < scaledGridColumns; x++) {
-      // Map cell → image region
-      const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
-      const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
-      const w = Math.ceil(imgToUse.width / scaledGridColumns);
-      const h = Math.ceil(imgToUse.height / scaledGridRows);
+    for (let y = 0; y < scaledGridRows; y++) {
+      for (let x = 0; x < scaledGridColumns; x++) {
+        // Map cell → image region
+        const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
+        const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
+        const w = Math.ceil(imgToUse.width / scaledGridColumns);
+        const h = Math.ceil(imgToUse.height / scaledGridRows);
 
-      // Brightness and character
-      const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
-      const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+        // Brightness and character
+        const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
+        const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
 
-      const charIndex = Math.floor(
-        p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
-      );
-      const c = window.density.charAt(charIndex);
+        const charIndex = Math.floor(
+          p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
+        );
+        const c = window.density.charAt(charIndex);
 
-      // Character color
-      let charColor;
-      if (window.useImageColors && gridCellColors) {
-        const colorIndex = y * scaledGridColumns + x;
-        if (colorIndex < gridCellColors.length) {
-          const colorArray = gridCellColors[colorIndex];
-          if (Array.isArray(colorArray) && colorArray.length === 3) {
-            charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
+        // Character color
+        let charColor;
+        if (window.useImageColors && gridCellColors) {
+          const colorIndex = y * scaledGridColumns + x;
+          if (colorIndex < gridCellColors.length) {
+            const colorArray = gridCellColors[colorIndex];
+            if (Array.isArray(colorArray) && colorArray.length === 3) {
+              charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
+            } else {
+              console.warn("Invalid color data at index", colorIndex, colorArray);
+              charColor = p.color(255);
+            }
           } else {
-            console.warn("Invalid color data at index", colorIndex, colorArray);
             charColor = p.color(255);
           }
+        } else if (colorMap) {
+          charColor = colorMap.get(c);
+        }
+
+        // ---- Pixel background per cell (optional)
+        let bgRectColor = null;
+
+        // Base RGB for HSL offset mode
+        let baseRgbForHslOffset = null;
+
+        if (charColor) {
+          // Prefer the character color as base
+          const [cr, cg, cb] = charColor.levels;
+          baseRgbForHslOffset = [cr, cg, cb];
+        } else if (window.useImageColors && gridCellColors) {
+          // If no charColor (e.g. space) but image colors exist, use the image cell color
+          const cellIndex = y * scaledGridColumns + x;
+          if (cellIndex < gridCellColors.length) {
+            const colorArray = gridCellColors[cellIndex];
+            if (Array.isArray(colorArray) && colorArray.length === 3) {
+              baseRgbForHslOffset = [colorArray[0], colorArray[1], colorArray[2]];
+            }
+          }
+        }
+
+        if (!baseRgbForHslOffset) {
+          // Fallback: build a neutral grey from brightness when no color is available
+          const lGrey = Math.max(0, Math.min(100, (adjustedAvg / 255) * 100));
+          const [gr, gg, gb] = hslToRgb(0, 0, lGrey);
+          baseRgbForHslOffset = [gr, gg, gb];
+        }
+
+        switch (advancedBgMode) {
+          case "hslOffset": {
+            const bg = getHslOffsetBgColor(baseRgbForHslOffset, adjustedAvg);
+            if (bg) {
+              // Force pixel alpha to match bgAlpha slider
+              bg.setAlpha(bgA);
+              bgRectColor = bg;
+            }
+            break;
+          }
+
+          case "colorPicker": {
+            // Use the ONE shared picker colour as the base for the gradient pixels
+            const [pr, pg, pb] = window.bgColorRGB || [120, 170, 255];
+
+            // Convert base to HSL, then replace L with brightness-derived lightness
+            const [h, s] = rgbToHsl(pr, pg, pb);
+            const l = Math.round((adjustedAvg / 255) * 100);
+            const [r, g, b] = hslToRgb(h, s, l);
+
+            bgRectColor = p.color(r, g, b, bgA);
+            break;
+          }
+
+          case "off":
+          default:
+            // no pixel rects
+            break;
+        }
+
+        if (bgRectColor) {
+          canvas.noStroke();
+          canvas.fill(bgRectColor);
+          canvas.rect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+        }
+
+        // Draw the character on top
+        if (charColor) {
+          canvas.fill(charColor);
         } else {
-          charColor = p.color(255);
-        }
-      } else if (colorMap) {
-        charColor = colorMap.get(c);
-      }
-
-      // ---- Pixel background per cell (optional)
-      let bgRectColor = null;
-
-      // Base RGB for HSL offset mode
-      let baseRgbForHslOffset = null;
-
-      if (charColor) {
-        // Prefer the character color as base
-        const [cr, cg, cb] = charColor.levels;
-        baseRgbForHslOffset = [cr, cg, cb];
-      } else if (window.useImageColors && gridCellColors) {
-        // If no charColor (e.g. space) but image colors exist, use the image cell color
-        const cellIndex = y * scaledGridColumns + x;
-        if (cellIndex < gridCellColors.length) {
-          const colorArray = gridCellColors[cellIndex];
-          if (Array.isArray(colorArray) && colorArray.length === 3) {
-            baseRgbForHslOffset = [colorArray[0], colorArray[1], colorArray[2]];
-          }
-        }
-      }
-
-      if (!baseRgbForHslOffset) {
-        // Fallback: build a neutral grey from brightness when no color is available
-        const lGrey = Math.max(0, Math.min(100, (adjustedAvg / 255) * 100));
-        const [gr, gg, gb] = hslToRgb(0, 0, lGrey);
-        baseRgbForHslOffset = [gr, gg, gb];
-      }
-
-      switch (advancedBgMode) {
-        case "hslOffset": {
-          const bg = getHslOffsetBgColor(baseRgbForHslOffset, adjustedAvg);
-          if (bg) {
-            // Force pixel alpha to match bgAlpha slider
-            bg.setAlpha(bgA);
-            bgRectColor = bg;
-          }
-          break;
+          canvas.fill(255);
         }
 
-        case "colorPicker": {
-          // Pixel base colour is RGB from the pixel picker
-          const [pr, pg, pb] = window.pixelColorRGB || [120, 170, 255];
-
-          // Use brightness as lightness (convert base to HSL, replace L)
-          const [h, s] = rgbToHsl(pr, pg, pb);
-          const l = Math.round((adjustedAvg / 255) * 100);
-          const [r, g, b] = hslToRgb(h, s, l);
-
-          bgRectColor = p.color(r, g, b, bgA);
-          break;
-        }
-
-        case "off":
-        default:
-          // no pixel rects
-          break;
+        const xPos = (x + 0.5) * cellWidth;
+        const yPos = (y + 0.5) * cellHeight;
+        canvas.text(c, xPos, yPos);
       }
-
-      if (bgRectColor) {
-        canvas.noStroke();
-        canvas.fill(bgRectColor);
-        canvas.rect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-      }
-
-      // Draw the character on top
-      if (charColor) {
-        canvas.fill(charColor);
-      } else {
-        canvas.fill(255);
-      }
-
-      const xPos = (x + 0.5) * cellWidth;
-      const yPos = (y + 0.5) * cellHeight;
-      canvas.text(c, xPos, yPos);
     }
   }
-}
 
-  function getCellBgGray(adjustedAvg) {
-    const normalized = adjustedAvg / 255;
-    return Math.round(normalized * 255);
-  }
 
   function getBgColor() {
     const rgb = window.bgColorRGB || [0, 0, 0];
@@ -477,7 +470,8 @@ function drawAsciiArt(graphics = null) {
     const offscreenBuffer = p.createGraphics(pngWidth, pngHeight);
 
     drawAsciiArt(offscreenBuffer);
-    p.saveCanvas(offscreenBuffer, window.density, "png");
+    const safeName = window.density.replace(/\s+/g, "_").slice(0, 50);
+    p.saveCanvas(offscreenBuffer, safeName, "png");
     offscreenBuffer.remove();
 
     setTimeout(() => {
@@ -487,28 +481,6 @@ function drawAsciiArt(graphics = null) {
       }
       console.log("Download process completed");
     }, 1000);
-  };
-
-  window.loadNewImage = function (imageName, pInstance, isDefault = false, resolve) {
-    p.loadImage(
-      `img/${imageName}`,
-      (newImg) => {
-        window.img = newImg;
-        window.img.resize(p.width, p.height);
-        
-        if (p.isLooping()) {
-          p.redraw();
-        } else {
-          p.loop();
-          p.noLoop();
-        }
-        if (resolve) resolve();
-      },
-      (error) => {
-        console.error("Error loading image:", error);
-        if (resolve) resolve();
-      }
-    );
   };
 
   window.createAndDownloadSVG = async function () {

@@ -29,24 +29,70 @@
       <div class="control-group">
         <button id="reset-settings">Reset All Settings</button>
       </div>
+      
+      <div id="color-extraction-message" style="display: none;">
+        <p>ASCII Colors are being extracted from the image. Adjust other parameters as needed.</p>
+      </div>
+
+      <h3>ASCII Characters</h3>
+      <div class="control-group vertical-slider">
+        <label for="cf">Contrast:</label>
+        <div class="slider-with-input">
+          <input type="number" id="cf-value" class="value-input" min="0" max="150" value="55">
+          <input type="range" id="cf" class="range-input" min="0" max="150" value="55">
+        </div>
+      </div>
+      
+      <div class="control-group vertical-slider">
+        <label for="mp">Midpoint:</label>
+        <div class="slider-with-input">
+          <input type="number" id="mp-value" class="value-input" min="0" max="255" value="141">
+          <input type="range" id="mp" class="range-input" min="0" max="255" value="141">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="density-input">Input Characters:</label>
+        <input type="text" id="density-input" value="RRBZ21">
+      </div>
+
+      <div class="control-group">
+        <label for="zero-slider">Append Zeros:</label>
+        <input type="range" id="zero-slider" min="0" max="12" value="4">
+        <span id="zero-value">4</span>
+      </div>
+
+      <div class="control-group">
+        <label for="space-slider">Append Spaces:</label>
+        <input type="range" id="space-slider" min="0" max="12" value="0">
+        <span id="space-value">0</span>
+      </div>
+
+      <div class="control-group vertical-slider">
+        <label for="columns">Number of Columns:</label>
+        <div class="slider-with-input">
+          <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
+          <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
+        </div>
+      </div>
 
       <div class="control-group" id="background-controls">
         <h3>Background</h3>
-
+      
         <div class="control-group">
           <label>Background Style</label>
-        
+      
           <div class="radio-group">
             <div class="radio-option">
               <input type="radio" id="bg-style-off" name="advanced-bg-mode" value="off" checked />
               <label for="bg-style-off">Flat Background</label>
             </div>
-        
+      
             <div class="radio-option">
               <input type="radio" id="bg-style-color-picker" name="advanced-bg-mode" value="colorPicker" />
               <label for="bg-style-color-picker">Gradient Pixels</label>
             </div>
-        
+      
             <div class="radio-option">
               <input type="radio" id="bg-style-hsl-offset" name="advanced-bg-mode" value="hslOffset" />
               <label for="bg-style-hsl-offset">Offset Pixels</label>
@@ -83,55 +129,12 @@
             <input type="number" id="l-offset-value" min="-100" max="100" value="0" />
           </label>
         </div>
-      
-        <!-- Only shown when bg-style === "colorPicker" -->
-        <div id="advanced-bg-color-picker-controls" style="display:none;">
-          <label for="advanced-bg-color-input">Pixel colour</label>
-          <input type="color" id="advanced-bg-color-input" />
-        </div>
       </div>
-
+      
+      <h3>ASCII Colours</h3>
       <div class="control-group">
         <label for="color-extraction-toggle">Use Image Colors:</label>
         <input type="checkbox" id="color-extraction-toggle">
-      </div>
-      
-      <div id="color-extraction-message" style="display: none;">
-        <p>ASCII Colors are being extracted from the image. Adjust other parameters as needed.</p>
-      </div>
-
-
-      <div class="control-group vertical-slider">
-        <label for="cf">Contrast:</label>
-        <div class="slider-with-input">
-          <input type="number" id="cf-value" class="value-input" min="0" max="150" value="55">
-          <input type="range" id="cf" class="range-input" min="0" max="150" value="55">
-        </div>
-      </div>
-      
-      <div class="control-group vertical-slider">
-        <label for="mp">Midpoint:</label>
-        <div class="slider-with-input">
-          <input type="number" id="mp-value" class="value-input" min="0" max="255" value="141">
-          <input type="range" id="mp" class="range-input" min="0" max="255" value="141">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label for="density-input">Input Characters:</label>
-        <input type="text" id="density-input" value="RRBZ21">
-      </div>
-
-      <div class="control-group">
-        <label for="zero-slider">Append Zeros:</label>
-        <input type="range" id="zero-slider" min="0" max="12" value="4">
-        <span id="zero-value">4</span>
-      </div>
-
-      <div class="control-group">
-        <label for="space-slider">Append Spaces:</label>
-        <input type="range" id="space-slider" min="0" max="12" value="0">
-        <span id="space-value">0</span>
       </div>
 
       <div class="control-group" id="color-count-group">
@@ -152,6 +155,40 @@
         </div>
       </div>
 
+      <div class="control-group" id="char-color-pickers">
+
+        <div id="char-start-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="start-color-input">1</label>
+            <input type="color" id="start-color-input" />
+            <label for="start-alpha">Alpha</label>
+            <input type="range" id="start-alpha" min="0" max="100" value="100" />
+            <input type="number" id="start-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+        <div id="char-middle-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="middle-color-input">2</label>
+            <input type="color" id="middle-color-input" />
+            <label for="middle-alpha">Alpha</label>
+            <input type="range" id="middle-alpha" min="0" max="100" value="100" />
+            <input type="number" id="middle-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+        <div id="char-end-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="end-color-input">3</label>
+            <input type="color" id="end-color-input" />
+            <label for="end-alpha">Alpha</label>
+            <input type="range" id="end-alpha" min="0" max="100" value="100" />
+            <input type="number" id="end-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+      </div>
+
       <div class="control-group" id="lerp-control">
         <label>LERP:</label>
         <div class="radio-group">
@@ -166,51 +203,13 @@
         </div>
       </div>
 
-      <div class="control-group" id="char-color-pickers">
-        <h3>ASCII Colours</h3>
-      
-        <div class="control-group" id="char-start-picker">
-          <label for="start-color-input">Start colour</label>
-          <input type="color" id="start-color-input" />
-          <label for="start-alpha">Alpha</label>
-          <input type="range" id="start-alpha" min="0" max="100" value="100" />
-          <input type="number" id="start-alpha-value" min="0" max="100" value="100" />
-        </div>
-      
-        <div class="control-group" id="char-middle-picker">
-          <label for="middle-color-input">Middle colour</label>
-          <input type="color" id="middle-color-input" />
-          <label for="middle-alpha">Alpha</label>
-          <input type="range" id="middle-alpha" min="0" max="100" value="100" />
-          <input type="number" id="middle-alpha-value" min="0" max="100" value="100" />
-        </div>
-      
-        <div class="control-group" id="char-end-picker">
-          <label for="end-color-input">End colour</label>
-          <input type="color" id="end-color-input" />
-          <label for="end-alpha">Alpha</label>
-          <input type="range" id="end-alpha" min="0" max="100" value="100" />
-          <input type="number" id="end-alpha-value" min="0" max="100" value="100" />
-        </div>
-      </div>
-
-      <div class="control-group vertical-slider">
-        <label for="columns">Number of Columns:</label>
-        <div class="slider-with-input">
-          <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
-          <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
-        </div>
-      </div>
-
+      <h3>Save File</h3>
       <div class="control-group">
         <label for="png-width">PNG Width:</label>
         <input type="number" id="png-width" min="1" value="900">
         <button id="download-png" class="download-button">Download PNG</button>
       </div>
 
-      <!-- <div class="control-group">
-        <button id="download-svg" class="download-button">Download SVG</button>
-      </div> -->
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>

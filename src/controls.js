@@ -1,6 +1,43 @@
 // import { extractDominantColors, assignColorsAndBackground, rgbToHsl, isGrayscale } from "./colorUtils.js";
-import p5 from "p5";
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
+
+const DEFAULTS = {
+  // image/colors
+  useImageColors: true,
+  colorCount: 2,
+  LERP: false,
+
+  // density
+  baseDensity: "RBGHZ",
+  zeroCount: 2,
+  spaceCount: 2,
+
+  // contrast
+  cF: 0.6,
+  mP: 141,
+
+  // canvas/grid
+  gridColumns: 150,
+  printRes: 1200,
+
+  // character colours (HSLA)
+  startColor: [30, 100, 100, 1],
+  middleColor: [45, 100, 50, 1],
+  endColor: [0, 0, 33, 1],
+
+  // flat background
+  bgColorRGB: [0, 0, 0],
+  bgAlpha: 1,
+
+  // pixel background mode
+  advancedBgMode: "hslOffset", // "off" | "colorPicker" | "hslOffset"
+  pixelColorRGB: [120, 170, 255],
+
+  // offset mode
+  hOffset: -11,
+  sOffset: 29,
+  lOffset: -10,
+};
 
 function debounce(func, delay) {
   let timeout;
@@ -11,74 +48,67 @@ function debounce(func, delay) {
 }
 
 export function initializeControls(p5Instance) {
-
-  // Background defaults (flat black, fully opaque)
-  if (!window.bgColorRGB) window.bgColorRGB = [0, 0, 0];
-  if (typeof window.bgAlpha !== "number") window.bgAlpha = 1;
-
-  // Background style (reusing existing variable)
-  if (!window.advancedBgMode) window.advancedBgMode = "off";
-
-  // Base HSLA for colour-picker mode (example default)
-  if (!window.advancedBgColor) {
-    window.advancedBgColor = [210, 80, 50, 1]; // [h, s, l, a]
-  }
-
-  // HSL offsets for HSL offset mode
-  if (typeof window.hOffset !== "number") window.hOffset = 0;
-  if (typeof window.sOffset !== "number") window.sOffset = 0;
-  if (typeof window.lOffset !== "number") window.lOffset = 0;
-
-  // File upload
+  // ---------------------------------------------------------------------------
+  // 1) Wire UI listeners FIRST (so syncUIFromState doesn't get overwritten later)
+  // ---------------------------------------------------------------------------
   setupFileUpload(p5Instance);
-
-  // Reset image
   setupResetImage(p5Instance);
-
-  // Reset settings button
   setupResetSettings();
 
-  // Background controls
   setupBackgroundControls();
-
-  // Debounced MP slider and input
   setupMPSlider();
-
-  // CF slider and input with debouncing
   setupCFSlider();
 
-  // Density characters input
   setupDensityInput();
-
-  // Zero slider input
   setupZeroSlider();
-
-  // Space slider input
   setupSpaceSlider();
 
-  // Columns input with debounce
   setupColumnsInput();
-
-  // Download PNG button
   setupDownloadPNG();
 
-  // Color extraction toggle
   setupColorExtractionToggle();
 
-  // Character color pickers
-  setupCharColorPickers()
+  // ASCII character colour pickers + radios
+  setupCharColorPickers();
+  setupColorCountRadios();
 
-  // Color count radios
-  setupColorCountRadios(); 
-
-  if (window.sketchReady) {
-    updateColorControls();
-  } else {
-    window.addEventListener("sketchReady", updateColorControls);
+  // Optional: if you have LERP radios, make sure they are wired somewhere.
+  // If you already wire LERP elsewhere, ignore this.
+  const lerpRadios = document.querySelectorAll('input[name="lerp"]');
+  if (lerpRadios && lerpRadios.length) {
+    lerpRadios.forEach((r) => {
+      r.addEventListener("change", (e) => {
+        window.LERP = e.target.value === "true";
+        window.updateSketch?.();
+      });
+    });
   }
 
-  // Initial setup
-  toggleColorControls();
+  // ---------------------------------------------------------------------------
+  // 2) Apply defaults to state + UI (single source of truth)
+  // ---------------------------------------------------------------------------
+  applyDefaultsToState();
+  syncUIFromState();
+
+  // Ensure correct show/hide after defaults are applied
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
+
+  // ---------------------------------------------------------------------------
+  // 3) Kick sketch update when ready
+  // ---------------------------------------------------------------------------
+  const runInitialRender = () => {
+    // If your architecture prefers updateDensity() (because it rebuilds window.density), call it.
+    if (typeof window.updateDensity === "function") window.updateDensity();
+    else window.updateSketch?.();
+  };
+
+  if (window.sketchReady) {
+    runInitialRender();
+  } else {
+    // Run once when sketch is ready
+    window.addEventListener("sketchReady", runInitialRender, { once: true });
+  }
 }
 
 function setupFileUpload(p5Instance) {
@@ -121,37 +151,23 @@ function setupBackgroundControls() {
   const bgAlphaValue = document.getElementById("bg-alpha-value");
 
   const bgModeRadios = document.querySelectorAll('input[name="advanced-bg-mode"]');
-
   const hslOffsetControls = document.getElementById("advanced-bg-hsl-offset-controls");
-  const pixelPickerControls = document.getElementById("advanced-bg-color-picker-controls");
-  const pixelColorInput = document.getElementById("advanced-bg-color-input");
 
   // ---- Defaults (source of truth)
   if (!Array.isArray(window.bgColorRGB)) window.bgColorRGB = [0, 0, 0];
   if (typeof window.bgAlpha !== "number") window.bgAlpha = 1;
-
-  if (!window.advancedBgMode) window.advancedBgMode = "off";
-
-  // Pixel colour used only in colorPicker pixel mode
-  if (!Array.isArray(window.pixelColorRGB)) window.pixelColorRGB = [120, 170, 255]; // sensible default
+  if (!window.advancedBgMode) window.advancedBgMode = "off"; // off | colorPicker | hslOffset
 
   if (typeof window.hOffset !== "number") window.hOffset = 0;
   if (typeof window.sOffset !== "number") window.sOffset = 0;
   if (typeof window.lOffset !== "number") window.lOffset = 0;
 
-  // ---- Helpers
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
   const syncFlatBgPickerUI = () => {
     if (!bgColorInput) return;
     const [r, g, b] = window.bgColorRGB;
     bgColorInput.value = rgbToHex(r, g, b);
-  };
-
-  const syncPixelPickerUI = () => {
-    if (!pixelColorInput) return;
-    const [r, g, b] = window.pixelColorRGB;
-    pixelColorInput.value = rgbToHex(r, g, b);
   };
 
   const syncAlphaUI = () => {
@@ -161,23 +177,35 @@ function setupBackgroundControls() {
   };
 
   const setStyleUI = (mode) => {
-    // Sync radios
+    // sync radios
     if (bgModeRadios && bgModeRadios.length) {
       bgModeRadios.forEach((r) => (r.checked = r.value === mode));
     }
 
-    // Show/hide subcontrols
-    if (hslOffsetControls) hslOffsetControls.style.display = mode === "hslOffset" ? "block" : "none";
-    if (pixelPickerControls) pixelPickerControls.style.display = mode === "colorPicker" ? "block" : "none";
+    // show/hide HSL offset sliders
+    if (hslOffsetControls) {
+      hslOffsetControls.style.display = mode === "hslOffset" ? "block" : "none";
+    }
+
+    // SINGLE colour picker rules:
+    // - show for Flat (off) and Gradient Pixels (colorPicker)
+    // - hide for Offset Pixels (hslOffset)
+    if (bgColorInput) {
+      bgColorInput.style.display = mode === "hslOffset" ? "none" : "inline-block";
+    }
+    // hide/show the label too (best effort)
+    const bgColorLabel = document.querySelector('label[for="bg-color-input"]');
+    if (bgColorLabel) {
+      bgColorLabel.style.display = mode === "hslOffset" ? "none" : "block";
+    }
   };
 
-  // ---- Init UI values
+  // ---- Init UI
   syncFlatBgPickerUI();
-  syncPixelPickerUI();
   syncAlphaUI();
   setStyleUI(window.advancedBgMode);
 
-  // ---- Wire: flat background colour picker
+  // ---- Wire: shared colour picker (Flat + Gradient Pixels)
   if (bgColorInput) {
     bgColorInput.addEventListener("input", (e) => {
       const rgb = hexToRgb(e.target.value);
@@ -187,17 +215,7 @@ function setupBackgroundControls() {
     });
   }
 
-  // ---- Wire: pixel colour picker (used only for colorPicker pixel mode)
-  if (pixelColorInput) {
-    pixelColorInput.addEventListener("input", (e) => {
-      const rgb = hexToRgb(e.target.value);
-      if (!rgb) return;
-      window.pixelColorRGB = [rgb.r, rgb.g, rgb.b];
-      window.updateSketch?.();
-    });
-  }
-
-  // ---- Wire: alpha (applies to BOTH flat background and pixel backgrounds)
+  // ---- Wire: alpha (always applies)
   const applyAlphaPct = (pct) => {
     const v = clamp(Number(pct), 0, 100);
     window.bgAlpha = v / 100;
@@ -213,7 +231,7 @@ function setupBackgroundControls() {
   if (bgModeRadios && bgModeRadios.length) {
     bgModeRadios.forEach((radio) => {
       radio.addEventListener("change", (e) => {
-        window.advancedBgMode = e.target.value; // off | hslOffset | colorPicker
+        window.advancedBgMode = e.target.value; // off | colorPicker | hslOffset
         setStyleUI(window.advancedBgMode);
         window.updateSketch?.();
       });
@@ -223,10 +241,9 @@ function setupBackgroundControls() {
   // ---- Wire HSL offset sliders
   setupHslOffsetControls();
 
-  // Final visibility sync
+  // Final sync
   setStyleUI(window.advancedBgMode);
 }
-
 
 function setupHslOffsetControls() {
   const pairs = [
@@ -383,7 +400,7 @@ function setupColorExtractionToggle() {
   if (colorExtractionToggle) {
     colorExtractionToggle.addEventListener("change", function(event) {
       window.useImageColors = event.target.checked;
-      toggleColorControls();
+
       
       if (window.useImageColors) {
 
@@ -400,17 +417,12 @@ function setupColorExtractionToggle() {
           if (bgAlphaValue) bgAlphaValue.value = 100;
 
           window.extractColors();
-        } else {
-          updateColorControlsVisibility();
-        }
-      
+        } 
+      toggleColorControls();
+      updateCharPickerVisibility();
       window.updateSketch();
     });
   }
-}
-
-function updateColorControlsVisibility() {
-  updateCharPickerVisibility();
 }
 
 function toggleColorControls() {
@@ -423,14 +435,13 @@ function toggleColorControls() {
   if (colorCountGroup) colorCountGroup.style.display = useImageColors ? "none" : "block";
 
   const lerpControl = document.getElementById("lerp-control");
-  if (lerpControl) lerpControl.style.display = useImageColors ? "none" : (Number(window.colorCount ?? 2) === 2 ? "block" : "none");
+  if (lerpControl) lerpControl.style.display = useImageColors ? "none" : "block";
 
   const msg = document.getElementById("color-extraction-message");
   if (msg) msg.style.display = useImageColors ? "block" : "none";
 
-  if (!useImageColors) {
-    updateCharPickerVisibility(); // <-- critical
-  }
+  // restore correct 1/2/3 visibility only when NOT using image colours
+  if (!useImageColors) updateCharPickerVisibility();
 }
 
 export function loadNewImage(source, p5Instance, isDefault = false, callback = null) {
@@ -468,7 +479,6 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
     })
     .catch((error) => console.error("Error loading image:", error));
 }
-
 
 function setupCharColorPickers() {
   const bindPicker = (key) => {
@@ -533,16 +543,25 @@ function setupCharColorPickers() {
 
 function updateCharPickerVisibility() {
   const c = Number(window.colorCount ?? 2);
+  const useImageColors = !!window.useImageColors;
 
   const start = document.getElementById("char-start-picker");
   const mid = document.getElementById("char-middle-picker");
   const end = document.getElementById("char-end-picker");
   const lerpControl = document.getElementById("lerp-control");
 
-  // If we can't find the new UI, fail silently
   if (!start || !mid || !end) return;
 
-  // Start is always relevant (when not using image colours)
+  // If using image colours, hide ALL char colour UI + LERP
+  if (useImageColors) {
+    start.style.display = "none";
+    mid.style.display = "none";
+    end.style.display = "none";
+    if (lerpControl) lerpControl.style.display = "none";
+    return;
+  }
+
+  // Otherwise: normal behaviour
   start.style.display = "block";
 
   if (c === 1) {
@@ -558,7 +577,7 @@ function updateCharPickerVisibility() {
     end.style.display = "block";
     if (lerpControl) lerpControl.style.display = "none";
   } else {
-    // Fallback: treat unknown as 2
+    // Fallback → treat as 2
     mid.style.display = "none";
     end.style.display = "block";
     if (lerpControl) lerpControl.style.display = "block";
@@ -569,82 +588,145 @@ function setupColorCountRadios() {
   const radios = document.querySelectorAll('input[name="color-count"]');
   if (!radios.length) return;
 
-  // Initialise from whichever is checked in the DOM (or default to 2)
+  // Initialize state from DOM
   const checked = document.querySelector('input[name="color-count"]:checked');
   window.colorCount = checked ? Number(checked.value) : Number(window.colorCount ?? 2);
 
-  // Sync UI immediately
+  // Apply visibility now
   updateCharPickerVisibility();
 
-  // Listen for changes
+  // Listen
   radios.forEach((r) => {
     r.addEventListener("change", (e) => {
       window.colorCount = Number(e.target.value);
-
-      // Only apply picker visibility when not using image colours
-      if (!window.useImageColors) {
-        updateCharPickerVisibility();
-      }
-
+      updateCharPickerVisibility();
       window.updateSketch?.();
     });
   });
 }
 
-function updateColorControls() {
-  if (window.useImageColors) return;
+function syncCharColorPickersUI() {
+  const syncOne = (key) => {
+    const prop = key + "Color"; // startColor/middleColor/endColor
+    const colorInput = document.getElementById(`${key}-color-input`);
+    const alphaSlider = document.getElementById(`${key}-alpha`);
+    const alphaValue = document.getElementById(`${key}-alpha-value`);
 
-  const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
-  if (!colorCountRadio) return;
+    if (!Array.isArray(window[prop])) return;
 
-  window.colorCount = parseInt(colorCountRadio.value, 10);
+    const [h, s, l, a = 1] = window[prop];
+    const [r, g, b] = hslToRgb(h, s, l);
 
-  updateCharPickerVisibility();
+    if (colorInput) colorInput.value = rgbToHex(r, g, b);
 
-  if (window.sketchReady) window.updateSketch?.();
+    const pct = Math.round(a * 100);
+    if (alphaSlider) alphaSlider.value = pct;
+    if (alphaValue) alphaValue.value = pct;
+  };
+
+  syncOne("start");
+  syncOne("middle");
+  syncOne("end");
 }
 
-function resetAllSettings() {
-  // ---- Reset global variables (source of truth)
-  window.mP = 141;
-  window.cF = 0.55;
+// function updateColorControls() {
+//   if (window.useImageColors) return;
 
-  window.baseDensity = "RRBZ21";
-  window.zeroCount = 4;
-  window.spaceCount = 0;
+//   const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
+//   if (!colorCountRadio) return;
+
+//   window.colorCount = parseInt(colorCountRadio.value, 10);
+
+//   updateCharPickerVisibility();
+
+//   if (window.sketchReady) window.updateSketch?.();
+// }
+
+function applyDefaultsToState() {
+  window.useImageColors = DEFAULTS.useImageColors;
+  window.colorCount = DEFAULTS.colorCount;
+  window.LERP = DEFAULTS.LERP;
+
+  window.baseDensity = DEFAULTS.baseDensity;
+  window.zeroCount = DEFAULTS.zeroCount;
+  window.spaceCount = DEFAULTS.spaceCount;
   window.density =
     window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
 
-  window.colorCount = 2;
-  window.LERP = true;
+  window.cF = DEFAULTS.cF;
+  window.mP = DEFAULTS.mP;
 
-  // ASCII character colours (HSLA)
-  window.startColor = [30, 100, 100, 1];
-  window.middleColor = [45, 100, 50, 1];
-  window.endColor = [0, 0, 33, 1];
+  window.gridColumns = DEFAULTS.gridColumns;
+  window.printRes = DEFAULTS.printRes;
 
-  // Use image colours
-  window.useImageColors = false;
+  window.startColor = [...DEFAULTS.startColor];
+  window.middleColor = [...DEFAULTS.middleColor];
+  window.endColor = [...DEFAULTS.endColor];
 
-  // Pixel background modes
-  window.advancedBgMode = "off"; // off | colorPicker | hslOffset
-  window.hOffset = 0;
-  window.sOffset = 0;
-  window.lOffset = 0;
+  window.bgColorRGB = [...DEFAULTS.bgColorRGB];
+  window.bgAlpha = DEFAULTS.bgAlpha;
 
-  // Flat background
-  window.bgColorRGB = [0, 0, 0];
-  window.bgAlpha = 1;
+  window.advancedBgMode = DEFAULTS.advancedBgMode;
+  window.pixelColorRGB = [...DEFAULTS.pixelColorRGB];
 
-  // Gradient pixel base colour (keep a sensible default)
-  // If you want this to reset to a specific colour, set it explicitly here.
-  if (!window.advancedBgColor) window.advancedBgColor = [210, 80, 50, 1];
+  window.hOffset = DEFAULTS.hOffset;
+  window.sOffset = DEFAULTS.sOffset;
+  window.lOffset = DEFAULTS.lOffset;
+}
 
-  // ---- Helper for simple UI syncing
+function resetAllSettings() {
+  // 1) Reset state to defaults
+  applyDefaultsToState();
+
+  // 2) Sync the UI to match the state (no rebinding)
+  syncUIFromState();
+
+  // 3) Ensure correct visibility (depends on useImageColors + colorCount)
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
+
+  // 4) Reset columns through the canonical path so grid + image-colors stay consistent
+  if (typeof window.updateColumns === "function") {
+    window.updateColumns(DEFAULTS.gridColumns);
+  } else {
+    window.gridColumns = DEFAULTS.gridColumns;
+    const columnsInput = document.getElementById("columns");
+    const columnsValue = document.getElementById("columns-value");
+    if (columnsInput) columnsInput.value = DEFAULTS.gridColumns;
+    if (columnsValue) columnsValue.value = DEFAULTS.gridColumns;
+  }
+
+  // 5) If your "use image colors" pipeline has a worker state, clear it
+  window.isExtractingColors = false;
+  // If you store extracted colours on window, clear them too (optional, safe)
+  // window.gridCellColors = null; // only if you actually use this global
+
+  // 6) Trigger recalculation + redraw
+  if (typeof window.updateDensity === "function") {
+    window.updateDensity(); // typically calls updateSketch internally
+  } else if (typeof window.updateSketch === "function") {
+    window.updateSketch();
+  }
+
+  console.log("All settings have been reset to default values.");
+}
+
+function syncUIFromState() {
+  // -------------------------
+  // helpers
+  // -------------------------
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
   const setValue = (id, value) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.value = value;
+  };
+
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = String(text);
   };
 
   const setChecked = (id, checked) => {
@@ -653,92 +735,152 @@ function resetAllSettings() {
     el.checked = !!checked;
   };
 
-  const setText = (id, text) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
+  const checkRadioByNameValue = (name, value) => {
+    const radios = document.querySelectorAll(`input[name="${name}"]`);
+    if (!radios || !radios.length) return;
+    radios.forEach((r) => (r.checked = r.value === String(value)));
   };
 
-  // ---- Core sliders/inputs
-  setValue("mp", window.mP);
-  setValue("mp-value", window.mP);
+  // -------------------------
+  // Use Image Colors
+  // -------------------------
+  setChecked("color-extraction-toggle", !!window.useImageColors);
 
-  setValue("cf", Math.round(window.cF * 100));
-  setValue("cf-value", Math.round(window.cF * 100));
+  // -------------------------
+  // Density + append
+  // -------------------------
+  if (typeof window.baseDensity === "string") setValue("density-input", window.baseDensity);
 
-  setValue("density-input", window.baseDensity);
+  if (typeof window.zeroCount === "number") {
+    setValue("zero-slider", window.zeroCount);
+    setText("zero-value", window.zeroCount);
+  }
 
-  setValue("zero-slider", window.zeroCount);
-  setText("zero-value", String(window.zeroCount));
+  if (typeof window.spaceCount === "number") {
+    setValue("space-slider", window.spaceCount);
+    setText("space-value", window.spaceCount);
+  }
 
-  setValue("space-slider", window.spaceCount);
-  setText("space-value", String(window.spaceCount));
+  // -------------------------
+  // Contrast / midpoint
+  // -------------------------
+  if (typeof window.cF === "number") {
+    const cfPct = Math.round(clamp(window.cF, 0, 1.5) * 100); // your UI is 0–150
+    setValue("cf", cfPct);
+    setValue("cf-value", cfPct);
+  }
 
-  // ---- Colour count + LERP radios
-  setChecked("color-count-2", true);
-  setChecked("lerp-true", true);
+  if (typeof window.mP === "number") {
+    const mp = Math.round(clamp(window.mP, 0, 255));
+    setValue("mp", mp);
+    setValue("mp-value", mp);
+  }
 
-  // ---- Use Image Colors toggle + message
-  setChecked("color-extraction-toggle", false);
+  // -------------------------
+  // Columns / print res
+  // -------------------------
+  if (typeof window.gridColumns === "number") {
+    const cols = Math.round(clamp(window.gridColumns, 10, 300));
+    setValue("columns", cols);
+    setValue("columns-value", cols);
+  }
 
-  // Ensure extraction message is hidden
-  const msg = document.getElementById("color-extraction-message");
-  if (msg) msg.style.display = "none";
+  // If you have a PNG width input (not printRes) this stays separate.
+  // printRes is used internally; leave png-width alone unless you want to bind it.
 
-  // ---- Background: flat colour + alpha
-  setValue("bg-color-input", "#000000");
-  setValue("bg-alpha", 100);
-  setValue("bg-alpha-value", 100);
+  // -------------------------
+  // Color count radios
+  // -------------------------
+  if (typeof window.colorCount === "number") {
+    checkRadioByNameValue("color-count", window.colorCount);
+  }
 
-  // ---- Background style radios
-  setChecked("bg-style-off", true);
-  setChecked("bg-style-color-picker", false);
-  setChecked("bg-style-hsl-offset", false);
+  // -------------------------
+  // LERP radios
+  // -------------------------
+  if (typeof window.LERP === "boolean") {
+    checkRadioByNameValue("lerp", window.LERP ? "true" : "false");
+  }
 
-  // ---- Pixel mode subcontrols: hide both
-  const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
-  const pickPanel = document.getElementById("advanced-bg-color-picker-controls");
-  if (hslPanel) hslPanel.style.display = "none";
-  if (pickPanel) pickPanel.style.display = "none";
-
-  // ---- Reset HSL offset controls
-  setValue("h-offset", 0);
-  setValue("h-offset-value", 0);
-  setValue("s-offset", 0);
-  setValue("s-offset-value", 0);
-  setValue("l-offset", 0);
-  setValue("l-offset-value", 0);
-
-  // ---- Sync ASCII colour pickers UI (NO rebinding)
-  syncCharColorPickersUI();
-
-  // ---- Reset columns safely
-  if (typeof window.updateColumns === "function") {
-    window.updateColumns(150);
+  // -------------------------
+  // Character color pickers (start/middle/end)
+  // Uses your existing sync helper if present
+  // -------------------------
+  if (typeof syncCharColorPickersUI === "function") {
+    syncCharColorPickersUI();
   } else {
-    window.gridColumns = 150;
-    setValue("columns", 150);
-    setValue("columns-value", 150);
+    // Fallback: do best effort directly from HSLA
+    const syncOne = (key) => {
+      const prop = key + "Color";
+      if (!Array.isArray(window[prop])) return;
+
+      const colorInput = document.getElementById(`${key}-color-input`);
+      const alphaSlider = document.getElementById(`${key}-alpha`);
+      const alphaValue = document.getElementById(`${key}-alpha-value`);
+
+      const [h, s, l, a = 1] = window[prop];
+      const [r, g, b] = hslToRgb(h, s, l);
+
+      if (colorInput) colorInput.value = rgbToHex(r, g, b);
+
+      const aPct = Math.round(clamp(a, 0, 1) * 100);
+      if (alphaSlider) alphaSlider.value = aPct;
+      if (alphaValue) alphaValue.value = aPct;
+    };
+
+    syncOne("start");
+    syncOne("middle");
+    syncOne("end");
   }
 
-  // ---- Ensure correct visibility of pickers vs image colours
-  if (typeof toggleColorControls === "function") {
-    toggleColorControls();
+  // -------------------------
+  // Background: one picker + alpha + mode radios + offsets
+  // -------------------------
+  if (Array.isArray(window.bgColorRGB)) {
+    const [r, g, b] = window.bgColorRGB;
+    setValue("bg-color-input", rgbToHex(r, g, b));
   }
 
-  if (typeof updateCharPickerVisibility === "function") {
-    updateCharPickerVisibility();
+  if (typeof window.bgAlpha === "number") {
+    const aPct = Math.round(clamp(window.bgAlpha, 0, 1) * 100);
+    setValue("bg-alpha", aPct);
+    setValue("bg-alpha-value", aPct);
   }
 
-  // ---- Recompute density (this calls updateSketch internally in your architecture)
-  if (typeof window.updateDensity === "function") {
-    window.updateDensity();
-  } else if (typeof window.updateSketch === "function") {
-    window.updateSketch();
+  if (typeof window.advancedBgMode === "string") {
+    checkRadioByNameValue("advanced-bg-mode", window.advancedBgMode);
   }
 
-  console.log("All settings have been reset to default values.");
+  if (typeof window.hOffset === "number") {
+    setValue("h-offset", window.hOffset);
+    setValue("h-offset-value", window.hOffset);
+  }
+  if (typeof window.sOffset === "number") {
+    setValue("s-offset", window.sOffset);
+    setValue("s-offset-value", window.sOffset);
+  }
+  if (typeof window.lOffset === "number") {
+    setValue("l-offset", window.lOffset);
+    setValue("l-offset-value", window.lOffset);
+  }
+
+  // -------------------------
+  // Final: visibility based on state
+  // (do NOT call updateSketch here)
+  // -------------------------
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
+
+  // Background controls visibility is handled inside setupBackgroundControls()
+  // via radio change listeners; but on reset/load we should force a UI sync:
+  const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
+  if (hslPanel) hslPanel.style.display = window.advancedBgMode === "hslOffset" ? "block" : "none";
+
+  // Rule you wanted: single picker shown for off + colorPicker, hidden for hslOffset
+  const bgColorInput = document.getElementById("bg-color-input");
+  const bgColorLabel = document.querySelector('label[for="bg-color-input"]');
+  const showBgPicker = window.advancedBgMode !== "hslOffset";
+  if (bgColorInput) bgColorInput.style.display = showBgPicker ? "inline-block" : "none";
+  if (bgColorLabel) bgColorLabel.style.display = showBgPicker ? "block" : "none";
 }
 
-
-// document.addEventListener("DOMContentLoaded", () => initializeControls(window.p5Instance));
