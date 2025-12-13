@@ -1,5 +1,43 @@
 // import { extractDominantColors, assignColorsAndBackground, rgbToHsl, isGrayscale } from "./colorUtils.js";
-import p5 from "p5";
+import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
+
+const DEFAULTS = {
+  // image/colors
+  useImageColors: true,
+  colorCount: 2,
+  LERP: false,
+
+  // density
+  baseDensity: "RBGHZ",
+  zeroCount: 2,
+  spaceCount: 2,
+
+  // contrast
+  cF: 0.6,
+  mP: 141,
+
+  // canvas/grid
+  gridColumns: 150,
+  printRes: 1200,
+
+  // character colours (HSLA)
+  startColor: [30, 100, 100, 1],
+  middleColor: [45, 100, 50, 1],
+  endColor: [0, 0, 33, 1],
+
+  // flat background
+  bgColorRGB: [0, 0, 0],
+  bgAlpha: 1,
+
+  // pixel background mode
+  advancedBgMode: "hslOffset", // "off" | "colorPicker" | "hslOffset"
+  pixelColorRGB: [120, 170, 255],
+
+  // offset mode
+  hOffset: -11,
+  sOffset: 29,
+  lOffset: -10,
+};
 
 function debounce(func, delay) {
   let timeout;
@@ -10,57 +48,66 @@ function debounce(func, delay) {
 }
 
 export function initializeControls(p5Instance) {
-  window.customBgColor = window.customBgColor || [0, 0, 100, 1]; // HSLA
-  
-  // File upload
+  // ---------------------------------------------------------------------------
+  // 1) Wire UI listeners FIRST (so syncUIFromState doesn't get overwritten later)
+  // ---------------------------------------------------------------------------
   setupFileUpload(p5Instance);
-
-  // Reset image
   setupResetImage(p5Instance);
-
-  // Reset settings button
   setupResetSettings();
 
-  // Debounced MP slider and input
+  setupBackgroundControls();
   setupMPSlider();
-
-  // CF slider and input with debouncing
   setupCFSlider();
 
-  // Density characters input
   setupDensityInput();
-
-  // Zero slider input
   setupZeroSlider();
-
-  // Space slider input
   setupSpaceSlider();
 
-  // Invert radio buttons
-  setupInvertRadios();
-
-  // Columns input with debounce
   setupColumnsInput();
-
-  // Download PNG button
   setupDownloadPNG();
 
-  // Color extraction toggle
   setupColorExtractionToggle();
 
-  // Color controls
-  setupColorControls();
+  // ASCII character colour pickers + radios
+  setupCharColorPickers();
+  setupColorCountRadios();
 
-  // Background color radio buttons and custom BG sliders
-  setupBackgroundColorControls();
+  // Optional: if you have LERP radios, make sure they are wired somewhere.
+  // If you already wire LERP elsewhere, ignore this.
+  const lerpRadios = document.querySelectorAll('input[name="lerp"]');
+  if (lerpRadios && lerpRadios.length) {
+    lerpRadios.forEach((r) => {
+      r.addEventListener("change", (e) => {
+        window.LERP = e.target.value === "true";
+        window.updateSketch?.();
+      });
+    });
+  }
 
-  // Initial setup
-  toggleColorControls();
+  // ---------------------------------------------------------------------------
+  // 2) Apply defaults to state + UI (single source of truth)
+  // ---------------------------------------------------------------------------
+  applyDefaultsToState();
+  syncUIFromState();
+
+  // Ensure correct show/hide after defaults are applied
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
+
+  // ---------------------------------------------------------------------------
+  // 3) Kick sketch update when ready
+  // ---------------------------------------------------------------------------
+  const runInitialRender = () => {
+    // If your architecture prefers updateDensity() (because it rebuilds window.density), call it.
+    if (typeof window.updateDensity === "function") window.updateDensity();
+    else window.updateSketch?.();
+  };
 
   if (window.sketchReady) {
-    updateColorControls();
+    runInitialRender();
   } else {
-    window.addEventListener("sketchReady", updateColorControls);
+    // Run once when sketch is ready
+    window.addEventListener("sketchReady", runInitialRender, { once: true });
   }
 }
 
@@ -84,7 +131,7 @@ function setupResetImage(p5Instance) {
   const resetButton = document.getElementById("reset-image");
   if (resetButton) {
     resetButton.addEventListener("click", function () {
-      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sleep.png";
+      const defaultImage = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sun.png";
       loadNewImage(defaultImage, p5Instance, true);
     });
   }
@@ -95,6 +142,142 @@ function setupResetSettings() {
   if (resetSettingsButton) {
     resetSettingsButton.addEventListener("click", resetAllSettings);
   }
+}
+
+function setupBackgroundControls() {
+  // ---- Elements
+  const bgColorInput = document.getElementById("bg-color-input");
+  const bgAlphaSlider = document.getElementById("bg-alpha");
+  const bgAlphaValue = document.getElementById("bg-alpha-value");
+
+  const bgModeRadios = document.querySelectorAll('input[name="advanced-bg-mode"]');
+  const hslOffsetControls = document.getElementById("advanced-bg-hsl-offset-controls");
+
+  // ---- Defaults (source of truth)
+  if (!Array.isArray(window.bgColorRGB)) window.bgColorRGB = [0, 0, 0];
+  if (typeof window.bgAlpha !== "number") window.bgAlpha = 1;
+  if (!window.advancedBgMode) window.advancedBgMode = "off"; // off | colorPicker | hslOffset
+
+  if (typeof window.hOffset !== "number") window.hOffset = 0;
+  if (typeof window.sOffset !== "number") window.sOffset = 0;
+  if (typeof window.lOffset !== "number") window.lOffset = 0;
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const syncFlatBgPickerUI = () => {
+    if (!bgColorInput) return;
+    const [r, g, b] = window.bgColorRGB;
+    bgColorInput.value = rgbToHex(r, g, b);
+  };
+
+  const syncAlphaUI = () => {
+    const pct = Math.round(clamp(window.bgAlpha, 0, 1) * 100);
+    if (bgAlphaSlider) bgAlphaSlider.value = pct;
+    if (bgAlphaValue) bgAlphaValue.value = pct;
+  };
+
+  const setStyleUI = (mode) => {
+    // sync radios
+    if (bgModeRadios && bgModeRadios.length) {
+      bgModeRadios.forEach((r) => (r.checked = r.value === mode));
+    }
+
+    // show/hide HSL offset sliders
+    if (hslOffsetControls) {
+      hslOffsetControls.style.display = mode === "hslOffset" ? "block" : "none";
+    }
+
+    // SINGLE colour picker rules:
+    // - show for Flat (off) and Gradient Pixels (colorPicker)
+    // - hide for Offset Pixels (hslOffset)
+    if (bgColorInput) {
+      bgColorInput.style.display = mode === "hslOffset" ? "none" : "inline-block";
+    }
+    // hide/show the label too (best effort)
+    const bgColorLabel = document.querySelector('label[for="bg-color-input"]');
+    if (bgColorLabel) {
+      bgColorLabel.style.display = mode === "hslOffset" ? "none" : "block";
+    }
+  };
+
+  // ---- Init UI
+  syncFlatBgPickerUI();
+  syncAlphaUI();
+  setStyleUI(window.advancedBgMode);
+
+  // ---- Wire: shared colour picker (Flat + Gradient Pixels)
+  if (bgColorInput) {
+    bgColorInput.addEventListener("input", (e) => {
+      const rgb = hexToRgb(e.target.value);
+      if (!rgb) return;
+      window.bgColorRGB = [rgb.r, rgb.g, rgb.b];
+      window.updateSketch?.();
+    });
+  }
+
+  // ---- Wire: alpha (always applies)
+  const applyAlphaPct = (pct) => {
+    const v = clamp(Number(pct), 0, 100);
+    window.bgAlpha = v / 100;
+    if (bgAlphaSlider) bgAlphaSlider.value = v;
+    if (bgAlphaValue) bgAlphaValue.value = v;
+    window.updateSketch?.();
+  };
+
+  if (bgAlphaSlider) bgAlphaSlider.addEventListener("input", (e) => applyAlphaPct(e.target.value));
+  if (bgAlphaValue) bgAlphaValue.addEventListener("change", (e) => applyAlphaPct(e.target.value));
+
+  // ---- Wire: mode radios
+  if (bgModeRadios && bgModeRadios.length) {
+    bgModeRadios.forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        window.advancedBgMode = e.target.value; // off | colorPicker | hslOffset
+        setStyleUI(window.advancedBgMode);
+        window.updateSketch?.();
+      });
+    });
+  }
+
+  // ---- Wire HSL offset sliders
+  setupHslOffsetControls();
+
+  // Final sync
+  setStyleUI(window.advancedBgMode);
+}
+
+function setupHslOffsetControls() {
+  const pairs = [
+    { sliderId: "h-offset", inputId: "h-offset-value", prop: "hOffset", min: -180, max: 180 },
+    { sliderId: "s-offset", inputId: "s-offset-value", prop: "sOffset", min: -100, max: 100 },
+    { sliderId: "l-offset", inputId: "l-offset-value", prop: "lOffset", min: -100, max: 100 },
+  ];
+
+  pairs.forEach(({ sliderId, inputId, prop, min, max }) => {
+    const slider = document.getElementById(sliderId);
+    const input = document.getElementById(inputId);
+    if (!slider || !input) return;
+
+    // Initialise from window.*
+    const current = typeof window[prop] === "number" ? window[prop] : 0;
+    slider.value = current;
+    input.value = current;
+
+    const apply = (val) => {
+      let v = parseFloat(val);
+      if (isNaN(v)) v = 0;
+      v = Math.max(min, Math.min(max, v));
+      window[prop] = v;
+      slider.value = v;
+      input.value = v;
+
+      if (typeof window.updateSketch === "function") {
+        window.updateSketch();
+      }
+    };
+
+    slider.addEventListener("input", (e) => apply(e.target.value));
+    input.addEventListener("change", (e) => apply(e.target.value));
+  });
 }
 
 function setupMPSlider() {
@@ -162,18 +345,6 @@ function setupSpaceSlider() {
   }
 }
 
-function setupInvertRadios() {
-  const invertRadios = document.querySelectorAll('input[name="invert"]');
-  if (invertRadios.length > 0) {
-    invertRadios.forEach((elem) => {
-      elem.addEventListener("change", function (event) {
-        window.invert = event.target.value === "true";
-        window.updateSketch();
-      });
-    });
-  }
-}
-
 function setupColumnsInput() {
   const columnsInput = document.getElementById("columns");
   const columnsValue = document.getElementById("columns-value");
@@ -229,247 +400,48 @@ function setupColorExtractionToggle() {
   if (colorExtractionToggle) {
     colorExtractionToggle.addEventListener("change", function(event) {
       window.useImageColors = event.target.checked;
-      toggleColorControls();
+
       
       if (window.useImageColors) {
-        // Switch background to black
-        window.bgColorOption = "black";
-        const blackBgRadio = document.getElementById("bg-black");
-        if (blackBgRadio) {
-          blackBgRadio.checked = true;
-        }
-        
-        // Hide custom background color controls
-        const customBgColorDiv = document.getElementById("custom-bg-color");
-        if (customBgColorDiv) {
-          customBgColorDiv.style.display = "none";
-        }
-        
-        window.extractColors();
-      } else {
-        updateColorControlsVisibility();
-      }
-      
+
+          // Set flat background to black (optional)
+          window.bgColorRGB = [0, 0, 0];
+          window.bgAlpha = 1;
+
+          const bgColorInput = document.getElementById("bg-color-input");
+          if (bgColorInput) bgColorInput.value = "#000000";
+
+          const bgAlpha = document.getElementById("bg-alpha");
+          const bgAlphaValue = document.getElementById("bg-alpha-value");
+          if (bgAlpha) bgAlpha.value = 100;
+          if (bgAlphaValue) bgAlphaValue.value = 100;
+
+          window.extractColors();
+        } 
+      toggleColorControls();
+      updateCharPickerVisibility();
       window.updateSketch();
     });
-  }
-}
-
-function setupColorControls() {
-  const colorControls = [
-    { id: "start-color", element: null, listeners: [] },
-    { id: "middle-color", element: null, listeners: [] },
-    { id: "end-color", element: null, listeners: [] },
-    { id: "color-count", element: null, listeners: [] },
-    { id: "lerp-control", element: null, listeners: [] }
-  ];
-
-  const colorCountRadios = document.querySelectorAll('input[name="color-count"]');
-  colorCountRadios.forEach(radio => {
-    radio.addEventListener('change', function(event) {
-      window.colorCount = parseInt(event.target.value, 10);
-      updateColorControlsVisibility();
-      window.updateSketch();
-    });
-  });
-
-  colorControls.forEach(control => {
-    control.element = document.getElementById(control.id);
-    if (control.element) {
-      const inputs = control.element.querySelectorAll('input, .color-slider-container');
-      inputs.forEach(input => {
-        const listener = createColorControlListener(input);
-        control.listeners.push({ input, listener });
-        
-        if (input.classList.contains('color-slider-container')) {
-          setupColorSlider(input);
-        } else {
-          input.addEventListener('change', listener);
-        }
-      });
-    }
-  });
-
-  // SVG download button
-  const downloadSvgButton = document.getElementById("download-svg");
-  if (downloadSvgButton) {
-    downloadSvgButton.addEventListener("click", window.createAndDownloadSVG);
-  }
-
-  window.colorControls = colorControls;  // Make colorControls accessible globally
-}
-
-function setupColorSlider(container) {
-  const slider = container.querySelector(".color-slider");
-  const valueInput = container.querySelector(".color-value-input");
-  
-  if (slider && valueInput) {
-    const updateColor = debounce((value) => {
-      slider.value = value;
-      valueInput.value = value;
-      const color = slider.dataset.color;
-      const channel = slider.dataset.channel;
-      const index = ["h", "s", "l", "a"].indexOf(channel);
-      
-      if (color === "bg-color") {
-        window.customBgColor[index] = channel === "a" ? parseFloat(value) : parseInt(value, 10);
-      } else {
-        window[color + "Color"][index] = channel === "a" ? parseFloat(value) : parseInt(value, 10);
-      }
-      window.updateSketch();
-    }, 200);
-
-    slider.addEventListener("input", (event) => {
-      updateColor(event.target.value);
-    });
-
-    valueInput.addEventListener("change", (event) => {
-      let value = parseFloat(event.target.value);
-      const max = parseFloat(slider.max);
-      const min = parseFloat(slider.min);
-      value = Math.min(max, Math.max(min, value));
-      updateColor(value);
-    });
-  }
-}
-
-function setupBackgroundColorControls() {
-  const bgColorRadios = document.querySelectorAll('input[name="bg-color"]');
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (bgColorRadios.length > 0) {
-    bgColorRadios.forEach((elem) => {
-      elem.addEventListener("change", function (event) {
-        window.bgColorOption = event.target.value;
-        if (event.target.value === "custom") {
-          customBgColorDiv.style.display = "block";
-          initializeCustomBgColorSliders();
-        } else {
-          customBgColorDiv.style.display = "none";
-        }
-        window.updateSketch();
-      });
-    });
-  }
-
-  // Set up custom background color sliders
-  const bgColorSliders = document.querySelectorAll('#custom-bg-color .color-slider');
-  bgColorSliders.forEach(slider => {
-    slider.addEventListener('input', updateCustomBgColor);
-  });
-
-  const bgColorInputs = document.querySelectorAll('#custom-bg-color .color-value-input');
-  bgColorInputs.forEach(input => {
-    input.addEventListener('change', updateCustomBgColor);
-  });
-}
-
-function createColorControlListener(input) {
-  return function(event) {
-    const inputType = input.type;
-    const inputName = input.name;
-    const inputValue = event.target.value;
-
-    switch (inputType) {
-      case 'radio':
-        if (inputName === 'color-count') {
-          window.colorCount = parseInt(inputValue, 10);
-          updateColorControlsVisibility();
-        } else if (inputName === 'lerp') {
-          window.LERP = inputValue === 'true';
-        }
-        break;
-      
-      case 'range':
-      case 'number':
-        const colorType = input.closest('.color-slider-container').dataset.color;
-        const channel = input.dataset.channel;
-        const index = ['h', 's', 'l', 'a'].indexOf(channel);
-        
-        if (colorType === 'bg-color') {
-          updateCustomBgColor(event);
-          return; // We've handled the custom background color, so we can return early
-        } else {
-          const colorProperty = colorType + 'Color';
-          if (!window[colorProperty]) {
-            window[colorProperty] = [0, 0, 0, 1]; // Default HSLA values
-          }
-          window[colorProperty][index] = channel === 'a' ? parseFloat(inputValue) : parseInt(inputValue, 10);
-        }
-        break;
-      
-      default:
-        console.warn('Unhandled input type:', inputType);
-    }
-
-    window.updateSketch();
-  };
-}
-
-function updateColorControlsVisibility() {
-  const colorCount = window.colorCount;
-  const middleColor = document.getElementById('middle-color');
-  const endColor = document.getElementById('end-color');
-  const lerpControl = document.getElementById('lerp-control');
-
-  if (middleColor && endColor && lerpControl) {
-    switch (colorCount) {
-      case 1:
-        middleColor.style.display = 'none';
-        endColor.style.display = 'none';
-        lerpControl.style.display = 'none';
-        break;
-      case 2:
-        middleColor.style.display = 'none';
-        endColor.style.display = 'block';
-        lerpControl.style.display = 'block';
-        break;
-      case 3:
-        middleColor.style.display = 'block';
-        endColor.style.display = 'block';
-        lerpControl.style.display = 'none';
-        break;
-      default:
-        console.warn('Unexpected color count:', colorCount);
-    }
   }
 }
 
 function toggleColorControls() {
-  const useImageColors = window.useImageColors;
-  const colorControlIds = ['start-color', 'middle-color', 'end-color'];
-  
-  colorControlIds.forEach(id => {
-    const element = document.getElementById(id);
-    if (element) {
-      element.style.display = useImageColors ? 'none' : 'block';
-    }
-  });
+  const useImageColors = !!window.useImageColors;
 
-  const colorCountRadios = document.querySelector('.control-group:has([name="color-count"])');
-  if (colorCountRadios) {
-    colorCountRadios.style.display = useImageColors ? 'none' : 'block';
-  }
+  const pickerWrap = document.getElementById("char-color-pickers");
+  if (pickerWrap) pickerWrap.style.display = useImageColors ? "none" : "block";
 
-  const lerpControl = document.getElementById('lerp-control');
-  if (lerpControl) {
-    lerpControl.style.display = useImageColors ? 'none' : 'block';
-  }
+  const colorCountGroup = document.getElementById("color-count-group");
+  if (colorCountGroup) colorCountGroup.style.display = useImageColors ? "none" : "block";
 
-  if (!useImageColors) {
-    updateColorControlsVisibility();
-  }
+  const lerpControl = document.getElementById("lerp-control");
+  if (lerpControl) lerpControl.style.display = useImageColors ? "none" : "block";
 
-  // Show/hide color extraction message
-  const colorExtractionMessage = document.getElementById("color-extraction-message");
-  if (colorExtractionMessage) {
-    colorExtractionMessage.style.display = useImageColors ? 'block' : 'none';
-  }
+  const msg = document.getElementById("color-extraction-message");
+  if (msg) msg.style.display = useImageColors ? "block" : "none";
 
-  // Always show custom background color controls if custom background is selected
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (customBgColorDiv) {
-    customBgColorDiv.style.display = window.bgColorOption === "custom" ? "block" : "none";
-  }
+  // restore correct 1/2/3 visibility only when NOT using image colours
+  if (!useImageColors) updateCharPickerVisibility();
 }
 
 export function loadNewImage(source, p5Instance, isDefault = false, callback = null) {
@@ -508,193 +480,407 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
     .catch((error) => console.error("Error loading image:", error));
 }
 
-function updateColorControls() {
-  if (window.useImageColors) return;
+function setupCharColorPickers() {
+  const bindPicker = (key) => {
+    const prop = key + "Color"; // startColor/middleColor/endColor
 
-  const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
-  if (!colorCountRadio) return;
+    const colorInput = document.getElementById(`${key}-color-input`);
+    const alphaSlider = document.getElementById(`${key}-alpha`);
+    const alphaValue = document.getElementById(`${key}-alpha-value`);
 
-  const colorCount = parseInt(colorCountRadio.value, 10);
-  const middleColor = document.getElementById("middle-color");
-  const endColor = document.getElementById("end-color");
-
-  window.colorCount = colorCount;
-
-  if (middleColor && endColor) {
-    if (colorCount === 1) {
-      middleColor.style.display = "none";
-      endColor.style.display = "none";
-    } else if (colorCount === 2) {
-      middleColor.style.display = "none";
-      endColor.style.display = "block";
-    } else {
-      middleColor.style.display = "block";
-      endColor.style.display = "block";
+    if (!Array.isArray(window[prop])) {
+      // Sensible defaults if missing
+      window[prop] = key === "start" ? [30, 100, 100, 1]
+                : key === "middle" ? [45, 100, 50, 1]
+                : [0, 0, 33, 1];
     }
+
+    // Init UI from HSLA
+    const [h, s, l, a = 1] = window[prop];
+    const [r, g, b] = hslToRgb(h, s, l);
+
+    if (colorInput) colorInput.value = rgbToHex(r, g, b);
+
+    const aPct = Math.round(a * 100);
+    if (alphaSlider) alphaSlider.value = aPct;
+    if (alphaValue) alphaValue.value = aPct;
+
+    // Color picker -> update HSLA (preserve alpha)
+    if (colorInput) {
+      colorInput.addEventListener("input", (e) => {
+        const rgb = hexToRgb(e.target.value);
+        if (!rgb) return;
+
+        const [hh, ss, ll] = rgbToHsl(rgb.r, rgb.g, rgb.b);
+        const currentA = window[prop]?.[3] ?? 1;
+        window[prop] = [hh, ss, ll, currentA];
+        window.updateSketch?.();
+      });
+    }
+
+    // Alpha controls -> update only A
+    const applyAlpha = (pct) => {
+      const v = Math.max(0, Math.min(100, Number(pct)));
+      if (alphaSlider) alphaSlider.value = v;
+      if (alphaValue) alphaValue.value = v;
+
+      const [hh, ss, ll] = window[prop];
+      window[prop] = [hh, ss, ll, v / 100];
+      window.updateSketch?.();
+    };
+
+    if (alphaSlider) alphaSlider.addEventListener("input", (e) => applyAlpha(e.target.value));
+    if (alphaValue) alphaValue.addEventListener("change", (e) => applyAlpha(e.target.value));
+  };
+
+  bindPicker("start");
+  bindPicker("middle");
+  bindPicker("end");
+
+  // Ensure middle/end pickers are shown/hidden correctly on load
+  updateCharPickerVisibility();
+}
+
+function updateCharPickerVisibility() {
+  const c = Number(window.colorCount ?? 2);
+  const useImageColors = !!window.useImageColors;
+
+  const start = document.getElementById("char-start-picker");
+  const mid = document.getElementById("char-middle-picker");
+  const end = document.getElementById("char-end-picker");
+  const lerpControl = document.getElementById("lerp-control");
+
+  if (!start || !mid || !end) return;
+
+  // If using image colours, hide ALL char colour UI + LERP
+  if (useImageColors) {
+    start.style.display = "none";
+    mid.style.display = "none";
+    end.style.display = "none";
+    if (lerpControl) lerpControl.style.display = "none";
+    return;
   }
 
-  if (window.sketchReady) {
-    window.updateSketch();
+  // Otherwise: normal behaviour
+  start.style.display = "block";
+
+  if (c === 1) {
+    mid.style.display = "none";
+    end.style.display = "none";
+    if (lerpControl) lerpControl.style.display = "none";
+  } else if (c === 2) {
+    mid.style.display = "none";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "block";
+  } else if (c === 3) {
+    mid.style.display = "block";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "none";
   } else {
-    console.log("Sketch not ready, skipping updateSketch");
+    // Fallback → treat as 2
+    mid.style.display = "none";
+    end.style.display = "block";
+    if (lerpControl) lerpControl.style.display = "block";
   }
 }
 
-function initializeCustomBgColorSliders() {
-  if (!Array.isArray(window.customBgColor) || window.customBgColor.length !== 4) {
-    window.customBgColor = [0, 0, 0, 1];  // HSLA
-  }
+function setupColorCountRadios() {
+  const radios = document.querySelectorAll('input[name="color-count"]');
+  if (!radios.length) return;
 
-  const bgColorControls = document.querySelectorAll("#custom-bg-color .color-slider-container");
+  // Initialize state from DOM
+  const checked = document.querySelector('input[name="color-count"]:checked');
+  window.colorCount = checked ? Number(checked.value) : Number(window.colorCount ?? 2);
 
-  if (bgColorControls.length > 0) {
-    bgColorControls.forEach((container) => {
-      const slider = container.querySelector(".color-slider");
-      const input = container.querySelector(".color-value-input");
+  // Apply visibility now
+  updateCharPickerVisibility();
 
-      if (slider && input) {
-        const channelIndex = ["h", "s", "l", "a"].indexOf(slider.dataset.channel);
-        const value = window.customBgColor[channelIndex];
-        slider.value = value;
-        input.value = value;
-      }
+  // Listen
+  radios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.colorCount = Number(e.target.value);
+      updateCharPickerVisibility();
+      window.updateSketch?.();
     });
-  }
-}
-
-function updateCustomBgColor(event) {
-  const channel = event.target.dataset.channel;
-  const value = parseFloat(event.target.value);
-  const index = ['h', 's', 'l', 'a'].indexOf(channel);
-
-  if (!window.customBgColor) {
-    window.customBgColor = [0, 0, 0, 1]; // Default HSLA values
-  }
-
-  window.customBgColor[index] = channel === 'a' ? value : Math.round(value);
-
-  // Update the corresponding slider or input
-  const sliderId = `bg-color-color-${channel}`;
-  const inputId = `${sliderId}-value`;
-  const slider = document.getElementById(sliderId);
-  const input = document.getElementById(inputId);
-
-  if (event.target.type === 'range') {
-    input.value = value;
-  } else {
-    slider.value = value;
-  }
-
-  window.updateSketch();
-}
-
-function updateColorSliders(colorName, colorValues) {
-  const channels = ['h', 's', 'l', 'a'];
-  channels.forEach((channel, index) => {
-    const slider = document.getElementById(`${colorName}-color-${channel}`);
-    const input = document.getElementById(`${colorName}-color-${channel}-value`);
-    if (slider && input) {
-      slider.value = colorValues[index];
-      input.value = colorValues[index];
-    }
   });
 }
 
+function syncCharColorPickersUI() {
+  const syncOne = (key) => {
+    const prop = key + "Color"; // startColor/middleColor/endColor
+    const colorInput = document.getElementById(`${key}-color-input`);
+    const alphaSlider = document.getElementById(`${key}-alpha`);
+    const alphaValue = document.getElementById(`${key}-alpha-value`);
+
+    if (!Array.isArray(window[prop])) return;
+
+    const [h, s, l, a = 1] = window[prop];
+    const [r, g, b] = hslToRgb(h, s, l);
+
+    if (colorInput) colorInput.value = rgbToHex(r, g, b);
+
+    const pct = Math.round(a * 100);
+    if (alphaSlider) alphaSlider.value = pct;
+    if (alphaValue) alphaValue.value = pct;
+  };
+
+  syncOne("start");
+  syncOne("middle");
+  syncOne("end");
+}
+
+// function updateColorControls() {
+//   if (window.useImageColors) return;
+
+//   const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
+//   if (!colorCountRadio) return;
+
+//   window.colorCount = parseInt(colorCountRadio.value, 10);
+
+//   updateCharPickerVisibility();
+
+//   if (window.sketchReady) window.updateSketch?.();
+// }
+
+function applyDefaultsToState() {
+  window.useImageColors = DEFAULTS.useImageColors;
+  window.colorCount = DEFAULTS.colorCount;
+  window.LERP = DEFAULTS.LERP;
+
+  window.baseDensity = DEFAULTS.baseDensity;
+  window.zeroCount = DEFAULTS.zeroCount;
+  window.spaceCount = DEFAULTS.spaceCount;
+  window.density =
+    window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
+
+  window.cF = DEFAULTS.cF;
+  window.mP = DEFAULTS.mP;
+
+  window.gridColumns = DEFAULTS.gridColumns;
+  window.printRes = DEFAULTS.printRes;
+
+  window.startColor = [...DEFAULTS.startColor];
+  window.middleColor = [...DEFAULTS.middleColor];
+  window.endColor = [...DEFAULTS.endColor];
+
+  window.bgColorRGB = [...DEFAULTS.bgColorRGB];
+  window.bgAlpha = DEFAULTS.bgAlpha;
+
+  window.advancedBgMode = DEFAULTS.advancedBgMode;
+  window.pixelColorRGB = [...DEFAULTS.pixelColorRGB];
+
+  window.hOffset = DEFAULTS.hOffset;
+  window.sOffset = DEFAULTS.sOffset;
+  window.lOffset = DEFAULTS.lOffset;
+}
+
 function resetAllSettings() {
-  // Reset global variables
-  window.mP = 141;
-  window.cF = 0.55;
-  window.baseDensity = "RRBZ21";
-  window.zeroCount = 4;
-  window.spaceCount = 0;
-  window.density = window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
-  window.colorCount = 2;
-  window.invert = true;
-  window.LERP = true;
-  window.startColor = [30, 100, 100, 1];  // HSLA
-  window.middleColor = [45, 100, 50, 1]; // HSLA
-  window.endColor = [0, 0, 33, 1];   // HSLA
-  window.bgColorOption = "black";
-  window.customBgColor = [0, 0, 100, 1];   // HSLA
-  window.useImageColors = false;
+  // 1) Reset state to defaults
+  applyDefaultsToState();
 
-  // Update UI elements
-  const updateElement = (id, value) => {
-    const element = document.getElementById(id);
-    if (element) {
-      if (element.type === 'checkbox' || element.type === 'radio') {
-        element.checked = value;
-      } else if (element.tagName === 'INPUT' || element.tagName === 'SELECT') {
-        element.value = value;
-      } else {
-        element.textContent = value;
-      }
-    }
-  };
+  // 2) Sync the UI to match the state (no rebinding)
+  syncUIFromState();
 
-  updateElement("mp", window.mP);
-  updateElement("mp-value", window.mP);
-  updateElement("cf", window.cF * 100);
-  updateElement("cf-value", window.cF * 100);
-  updateElement("density-input", window.baseDensity);
-  updateElement("zero-slider", window.zeroCount);
-  updateElement("zero-value", window.zeroCount);
-  updateElement("space-slider", window.spaceCount);
-  updateElement("space-value", window.spaceCount);
-  updateElement("invert-true", true);
-  updateElement("color-count-2", true);
-  updateElement("lerp-true", true);
-  updateElement("bg-black", true);
+  // 3) Ensure correct visibility (depends on useImageColors + colorCount)
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
 
-  // Update color extraction toggle
-  const colorExtractionToggle = document.getElementById("color-extraction-toggle");
-  if (colorExtractionToggle) {
-    colorExtractionToggle.checked = false;
-  }
-
-  // Update color sliders
-  const updateColorSliders = (colorName, colorValues) => {
-    ['h', 's', 'l', 'a'].forEach((channel, index) => {
-      updateElement(`${colorName}-color-${channel}`, colorValues[index]);
-      updateElement(`${colorName}-color-${channel}-value`, colorValues[index]);
-    });
-  };
-
-  updateColorSliders("start", window.startColor);
-  updateColorSliders("middle", window.middleColor);
-  updateColorSliders("end", window.endColor);
-  updateColorSliders("bg-color", window.customBgColor);
-
-  // Hide custom background color controls
-  const customBgColorDiv = document.getElementById("custom-bg-color");
-  if (customBgColorDiv) {
-    customBgColorDiv.style.display = "none";
-  }
-
-  // Reset columns safely
+  // 4) Reset columns through the canonical path so grid + image-colors stay consistent
   if (typeof window.updateColumns === "function") {
-    window.updateColumns(150);
+    window.updateColumns(DEFAULTS.gridColumns);
   } else {
-    console.warn("window.updateColumns is not a function. Falling back to direct assignment.");
-    window.gridColumns = 150;
-    updateElement("columns", 150);
-    updateElement("columns-value", 150);
+    window.gridColumns = DEFAULTS.gridColumns;
+    const columnsInput = document.getElementById("columns");
+    const columnsValue = document.getElementById("columns-value");
+    if (columnsInput) columnsInput.value = DEFAULTS.gridColumns;
+    if (columnsValue) columnsValue.value = DEFAULTS.gridColumns;
   }
 
-  // Update density and trigger sketch update
+  // 5) If your "use image colors" pipeline has a worker state, clear it
+  window.isExtractingColors = false;
+  // If you store extracted colours on window, clear them too (optional, safe)
+  // window.gridCellColors = null; // only if you actually use this global
+
+  // 6) Trigger recalculation + redraw
   if (typeof window.updateDensity === "function") {
-    window.updateDensity();
-  } else {
-    console.warn("window.updateDensity is not a function.");
-  }
-
-  if (typeof window.updateSketch === "function") {
+    window.updateDensity(); // typically calls updateSketch internally
+  } else if (typeof window.updateSketch === "function") {
     window.updateSketch();
-  } else {
-    console.warn("window.updateSketch is not a function.");
   }
 
   console.log("All settings have been reset to default values.");
 }
 
-document.addEventListener("DOMContentLoaded", () => initializeControls(window.p5Instance));
+function syncUIFromState() {
+  // -------------------------
+  // helpers
+  // -------------------------
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const setValue = (id, value) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value;
+  };
+
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = String(text);
+  };
+
+  const setChecked = (id, checked) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.checked = !!checked;
+  };
+
+  const checkRadioByNameValue = (name, value) => {
+    const radios = document.querySelectorAll(`input[name="${name}"]`);
+    if (!radios || !radios.length) return;
+    radios.forEach((r) => (r.checked = r.value === String(value)));
+  };
+
+  // -------------------------
+  // Use Image Colors
+  // -------------------------
+  setChecked("color-extraction-toggle", !!window.useImageColors);
+
+  // -------------------------
+  // Density + append
+  // -------------------------
+  if (typeof window.baseDensity === "string") setValue("density-input", window.baseDensity);
+
+  if (typeof window.zeroCount === "number") {
+    setValue("zero-slider", window.zeroCount);
+    setText("zero-value", window.zeroCount);
+  }
+
+  if (typeof window.spaceCount === "number") {
+    setValue("space-slider", window.spaceCount);
+    setText("space-value", window.spaceCount);
+  }
+
+  // -------------------------
+  // Contrast / midpoint
+  // -------------------------
+  if (typeof window.cF === "number") {
+    const cfPct = Math.round(clamp(window.cF, 0, 1.5) * 100); // your UI is 0–150
+    setValue("cf", cfPct);
+    setValue("cf-value", cfPct);
+  }
+
+  if (typeof window.mP === "number") {
+    const mp = Math.round(clamp(window.mP, 0, 255));
+    setValue("mp", mp);
+    setValue("mp-value", mp);
+  }
+
+  // -------------------------
+  // Columns / print res
+  // -------------------------
+  if (typeof window.gridColumns === "number") {
+    const cols = Math.round(clamp(window.gridColumns, 10, 300));
+    setValue("columns", cols);
+    setValue("columns-value", cols);
+  }
+
+  // If you have a PNG width input (not printRes) this stays separate.
+  // printRes is used internally; leave png-width alone unless you want to bind it.
+
+  // -------------------------
+  // Color count radios
+  // -------------------------
+  if (typeof window.colorCount === "number") {
+    checkRadioByNameValue("color-count", window.colorCount);
+  }
+
+  // -------------------------
+  // LERP radios
+  // -------------------------
+  if (typeof window.LERP === "boolean") {
+    checkRadioByNameValue("lerp", window.LERP ? "true" : "false");
+  }
+
+  // -------------------------
+  // Character color pickers (start/middle/end)
+  // Uses your existing sync helper if present
+  // -------------------------
+  if (typeof syncCharColorPickersUI === "function") {
+    syncCharColorPickersUI();
+  } else {
+    // Fallback: do best effort directly from HSLA
+    const syncOne = (key) => {
+      const prop = key + "Color";
+      if (!Array.isArray(window[prop])) return;
+
+      const colorInput = document.getElementById(`${key}-color-input`);
+      const alphaSlider = document.getElementById(`${key}-alpha`);
+      const alphaValue = document.getElementById(`${key}-alpha-value`);
+
+      const [h, s, l, a = 1] = window[prop];
+      const [r, g, b] = hslToRgb(h, s, l);
+
+      if (colorInput) colorInput.value = rgbToHex(r, g, b);
+
+      const aPct = Math.round(clamp(a, 0, 1) * 100);
+      if (alphaSlider) alphaSlider.value = aPct;
+      if (alphaValue) alphaValue.value = aPct;
+    };
+
+    syncOne("start");
+    syncOne("middle");
+    syncOne("end");
+  }
+
+  // -------------------------
+  // Background: one picker + alpha + mode radios + offsets
+  // -------------------------
+  if (Array.isArray(window.bgColorRGB)) {
+    const [r, g, b] = window.bgColorRGB;
+    setValue("bg-color-input", rgbToHex(r, g, b));
+  }
+
+  if (typeof window.bgAlpha === "number") {
+    const aPct = Math.round(clamp(window.bgAlpha, 0, 1) * 100);
+    setValue("bg-alpha", aPct);
+    setValue("bg-alpha-value", aPct);
+  }
+
+  if (typeof window.advancedBgMode === "string") {
+    checkRadioByNameValue("advanced-bg-mode", window.advancedBgMode);
+  }
+
+  if (typeof window.hOffset === "number") {
+    setValue("h-offset", window.hOffset);
+    setValue("h-offset-value", window.hOffset);
+  }
+  if (typeof window.sOffset === "number") {
+    setValue("s-offset", window.sOffset);
+    setValue("s-offset-value", window.sOffset);
+  }
+  if (typeof window.lOffset === "number") {
+    setValue("l-offset", window.lOffset);
+    setValue("l-offset-value", window.lOffset);
+  }
+
+  // -------------------------
+  // Final: visibility based on state
+  // (do NOT call updateSketch here)
+  // -------------------------
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
+
+  // Background controls visibility is handled inside setupBackgroundControls()
+  // via radio change listeners; but on reset/load we should force a UI sync:
+  const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
+  if (hslPanel) hslPanel.style.display = window.advancedBgMode === "hslOffset" ? "block" : "none";
+
+  // Rule you wanted: single picker shown for off + colorPicker, hidden for hslOffset
+  const bgColorInput = document.getElementById("bg-color-input");
+  const bgColorLabel = document.querySelector('label[for="bg-color-input"]');
+  const showBgPicker = window.advancedBgMode !== "hslOffset";
+  if (bgColorInput) bgColorInput.style.display = showBgPicker ? "inline-block" : "none";
+  if (bgColorLabel) bgColorLabel.style.display = showBgPicker ? "block" : "none";
+}
+

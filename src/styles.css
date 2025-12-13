@@ -1,11 +1,20 @@
-body, html {
+/* ---------- Base ---------- */
+html,
+body {
     margin: 0;
     padding: 0;
     height: 100%;
-    font-family: 'Courier New', Courier, monospace;
     box-sizing: border-box;
+    font-family: "Courier New", Courier, monospace;
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: inherit;
+}
+
+/* ---------- App layout ---------- */
 #app-container {
     display: flex;
     height: 100vh;
@@ -17,7 +26,11 @@ body, html {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: auto;
+}
+
+canvas {
+    display: block;
+    max-width: 100%;
     height: auto;
 }
 
@@ -31,31 +44,11 @@ body, html {
     gap: 10px;
 }
 
-#reset-image, #reset-settings {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    background-color: #f44336;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-#reset-image:hover, #reset-settings:hover {
-    background-color: #d32f2f;
-}
-
-canvas {
-    display: block;
-    max-width: 100%;
-    height: auto;
-}
-
-/* Heading styles */
-h1, h2, h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
+/* ---------- Headings ---------- */
+h1,
+h2,
+h3 {
+    margin: 0 0 10px 0;
     padding-bottom: 8px;
 }
 
@@ -74,7 +67,7 @@ h3 {
     margin-top: 2px;
 }
 
-/* Control groups stack vertically */
+/* ---------- Form layout ---------- */
 .control-group {
     display: flex;
     flex-direction: column;
@@ -82,147 +75,114 @@ h3 {
     margin-bottom: 5px;
 }
 
-/* Radio buttons within a group align horizontally */
-.radio-group {
-    display: flex;
-    flex-direction: row;
-    gap: 5px;
-    justify-content: flex-start;
-}
-
-.radio-option {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.radio-option input[type="radio"] {
-    margin-right: 5px;
-}
-
-.download-button {
-    width: 100%;
-    padding: 5px;
-    margin-top: 5px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.download-button:hover {
-    background-color: #45a049;
-}
-
-.vertical-slider {
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 15px;
-}
-
-.vertical-slider label {
-    margin-bottom: 5px;
-}
-
-.slider-with-input {
-    display: flex;
-    align-items: center;
-}
-
-.slider-with-input .value-input {
-    width: 60px;
-    margin-right: 10px;
-}
-
-.slider-with-input .range-input {
-    flex-grow: 1;
-}
-
-/* Labels and input layout */
 label {
     display: block;
     margin-bottom: 5px;
 }
 
+/* Radios */
+.radio-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Shared input styles */
 input[type="range"] {
     width: 100%;
 }
 
-input[type="number"], select {
+input[type="number"],
+select {
     width: 30%;
     padding: 5px;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: inherit;
 }
 
+/* Slider + number row (contrast/midpoint/columns) */
+.slider-with-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider-with-input .value-input {
+    width: 60px;
+}
+
+.slider-with-input .range-input {
+    flex: 1;
+}
+
+/* ---------- Buttons ---------- */
 button {
+    width: 100%;
     padding: 10px;
-    background-color: #4CAF50;
-    color: white;
     border: none;
+    border-radius: 4px;
     cursor: pointer;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: inherit;
+    background-color: #4CAF50;
+    color: #fff;
 }
 
 button:hover {
     background-color: #45a049;
 }
 
-/* Color slider controls */
-.color-slider-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+/* Reset buttons (override base button color) */
+#reset-image,
+#reset-settings {
+    background-color: #f44336;
 }
 
-.color-slider-container {
+#reset-image:hover,
+#reset-settings:hover {
+    background-color: #d32f2f;
+}
+
+/* Download button class if you still use it */
+.download-button {
+    padding: 5px;
+    margin-top: 5px;
+}
+
+/* ---------- New colour picker + alpha row ---------- */
+.char-color-row {
+    margin-bottom: 1.25rem;
+}
+
+.color-alpha-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
 
-.color-slider-container label {
-    width: 30px;
-    text-align: right;
+.color-alpha-row input[type="color"] {
+    width: 44px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #999;
+    cursor: pointer;
 }
 
-.color-slider {
-    flex-grow: 1;
+.color-alpha-row input[type="range"] {
+    flex: 1;
+    min-width: 120px;
 }
 
-/* New styles for color controls */
-#color-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+.color-alpha-row input[type="number"] {
+    width: 60px;
 }
 
-.color-control {
-    border: 1px solid #ccc;
-    padding: 10px;
-    border-radius: 4px;
-    background-color: #fff;
-}
-
-.color-control h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    font-size: 16px;
-    border-bottom: 1px solid #4CAF50;
-    padding-bottom: 5px;
-}
-
-.color-value-input {
-    width: 50px;
-    text-align: center;
-    padding: 2px;
-    font-size: 12px;
-}
-
-#color-extraction-toggle {
-    margin-right: 10px;
-}
-
+/* ---------- Image colour extraction message ---------- */
 #color-extraction-message {
     background-color: #e7f3fe;
     border: 1px solid #b6d4fe;
@@ -230,4 +190,9 @@ button:hover {
     border-radius: 4px;
     margin-top: 10px;
     font-style: italic;
+}
+
+/* ---------- Utility ---------- */
+.is-hidden {
+    display: none !important;
 }

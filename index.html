@@ -29,7 +29,12 @@
       <div class="control-group">
         <button id="reset-settings">Reset All Settings</button>
       </div>
+      
+      <div id="color-extraction-message" style="display: none;">
+        <p>ASCII Colors are being extracted from the image. Adjust other parameters as needed.</p>
+      </div>
 
+      <h3>ASCII Characters</h3>
       <div class="control-group vertical-slider">
         <label for="cf">Contrast:</label>
         <div class="slider-with-input">
@@ -63,30 +68,76 @@
         <span id="space-value">0</span>
       </div>
 
-      <div class="control-group">
-        <label>Invert:</label>
-        <div class="radio-group">
-          <div class="radio-option">
-            <input type="radio" id="invert-true" name="invert" value="true" checked>
-            <label for="invert-true">True</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="invert-false" name="invert" value="false">
-            <label for="invert-false">False</label>
-          </div>
+      <div class="control-group vertical-slider">
+        <label for="columns">Number of Columns:</label>
+        <div class="slider-with-input">
+          <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
+          <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
         </div>
       </div>
 
+      <div class="control-group" id="background-controls">
+        <h3>Background</h3>
+      
+        <div class="control-group">
+          <label>Background Style</label>
+      
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" id="bg-style-off" name="advanced-bg-mode" value="off" checked />
+              <label for="bg-style-off">Flat Background</label>
+            </div>
+      
+            <div class="radio-option">
+              <input type="radio" id="bg-style-color-picker" name="advanced-bg-mode" value="colorPicker" />
+              <label for="bg-style-color-picker">Gradient Pixels</label>
+            </div>
+      
+            <div class="radio-option">
+              <input type="radio" id="bg-style-hsl-offset" name="advanced-bg-mode" value="hslOffset" />
+              <label for="bg-style-hsl-offset">Offset Pixels</label>
+            </div>
+          </div>
+        </div>
+      
+        <label for="bg-color-input">Background colour</label>
+        <input type="color" id="bg-color-input" />
+      
+        <label for="bg-alpha">Background alpha</label>
+        <input type="range" id="bg-alpha" min="0" max="100" value="100" />
+        <input type="number" id="bg-alpha-value" min="0" max="100" value="100" />
+      
+        <!-- Only shown when bg-style === "hslOffset" -->
+        <div id="advanced-bg-hsl-offset-controls" style="display:none;">
+          <h4>HSL offsets</h4>
+      
+          <label>
+            Hue offset (°)
+            <input type="range" id="h-offset" min="-180" max="180" value="0" />
+            <input type="number" id="h-offset-value" min="-180" max="180" value="0" />
+          </label>
+      
+          <label>
+            Saturation offset
+            <input type="range" id="s-offset" min="-100" max="100" value="0" />
+            <input type="number" id="s-offset-value" min="-100" max="100" value="0" />
+          </label>
+      
+          <label>
+            Lightness offset
+            <input type="range" id="l-offset" min="-100" max="100" value="0" />
+            <input type="number" id="l-offset-value" min="-100" max="100" value="0" />
+          </label>
+        </div>
+      </div>
+      
+      <h3>ASCII Colours</h3>
       <div class="control-group">
         <label for="color-extraction-toggle">Use Image Colors:</label>
         <input type="checkbox" id="color-extraction-toggle">
       </div>
 
-      <div id="color-extraction-message" style="display: none;">
-        <p>ASCII Colors are being extracted from the image. Adjust other parameters as needed.</p>
-      </div>
-
-      <div class="control-group">
+      <div class="control-group" id="color-count-group">
         <label>Number of Colors:</label>
         <div class="radio-group">
           <div class="radio-option">
@@ -104,6 +155,40 @@
         </div>
       </div>
 
+      <div class="control-group" id="char-color-pickers">
+
+        <div id="char-start-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="start-color-input">1</label>
+            <input type="color" id="start-color-input" />
+            <label for="start-alpha">Alpha</label>
+            <input type="range" id="start-alpha" min="0" max="100" value="100" />
+            <input type="number" id="start-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+        <div id="char-middle-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="middle-color-input">2</label>
+            <input type="color" id="middle-color-input" />
+            <label for="middle-alpha">Alpha</label>
+            <input type="range" id="middle-alpha" min="0" max="100" value="100" />
+            <input type="number" id="middle-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+        <div id="char-end-picker" class="char-color-row">
+          <div class="color-alpha-row">
+            <label for="end-color-input">3</label>
+            <input type="color" id="end-color-input" />
+            <label for="end-alpha">Alpha</label>
+            <input type="range" id="end-alpha" min="0" max="100" value="100" />
+            <input type="number" id="end-alpha-value" min="0" max="100" value="100" />
+          </div>
+        </div>
+
+      </div>
+
       <div class="control-group" id="lerp-control">
         <label>LERP:</label>
         <div class="radio-group">
@@ -118,149 +203,13 @@
         </div>
       </div>
 
-      <div class="control-group" id="start-color">
-        <h3>Start Color</h3>
-        <div class="color-slider-group">
-          <div class="color-slider-container">
-            <label for="start-color-h">H</label>
-            <input type="number" id="start-color-h-value" class="color-value-input" min="0" max="360" value="60">
-            <input type="range" id="start-color-h" class="color-slider" data-color="start" data-channel="h" min="0" max="360" value="60">
-          </div>
-          <div class="color-slider-container">
-            <label for="start-color-s">S</label>
-            <input type="number" id="start-color-s-value" class="color-value-input" min="0" max="100" value="100">
-            <input type="range" id="start-color-s" class="color-slider" data-color="start" data-channel="s" min="0" max="100" value="100">
-          </div>
-          <div class="color-slider-container">
-            <label for="start-color-l">L</label>
-            <input type="number" id="start-color-l-value" class="color-value-input" min="0" max="100" value="50">
-            <input type="range" id="start-color-l" class="color-slider" data-color="start" data-channel="l" min="0" max="100" value="50">
-          </div>
-          <div class="color-slider-container">
-            <label for="start-color-a">A</label>
-            <input type="number" id="start-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
-            <input type="range" id="start-color-a" class="color-slider" data-color="start" data-channel="a" min="0" max="1" value="1" step="0.01">
-          </div>
-        </div>
-      </div>
-
-      <div class="control-group" id="middle-color">
-        <h3>Middle Color</h3>
-        <div class="color-slider-group">
-          <div class="color-slider-container">
-            <label for="middle-color-h">H</label>
-            <input type="number" id="middle-color-h-value" class="color-value-input" min="0" max="360" value="60">
-            <input type="range" id="middle-color-h" class="color-slider" data-color="middle" data-channel="h" min="0" max="360" value="160">
-          </div>
-          <div class="color-slider-container">
-            <label for="middle-color-s">S</label>
-            <input type="number" id="middle-color-s-value" class="color-value-input" min="0" max="100" value="100">
-            <input type="range" id="middle-color-s" class="color-slider" data-color="middle" data-channel="s" min="0" max="100" value="100">
-          </div>
-          <div class="color-slider-container">
-            <label for="middle-color-l">L</label>
-            <input type="number" id="middle-color-l-value" class="color-value-input" min="0" max="100" value="50">
-            <input type="range" id="middle-color-l" class="color-slider" data-color="middle" data-channel="l" min="0" max="100" value="50">
-          </div>
-          <div class="color-slider-container">
-            <label for="middle-color-a">A</label>
-            <input type="number" id="middle-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
-            <input type="range" id="middle-color-a" class="color-slider" data-color="middle" data-channel="a" min="0" max="1" value="1" step="0.01">
-          </div>
-        </div>
-      </div>
-
-      <div class="control-group" id="end-color">
-        <h3>End Color</h3>
-        <div class="color-slider-group">
-          <div class="color-slider-container">
-            <label for="end-color-h">H</label>
-            <input type="number" id="end-color-h-value" class="color-value-input" min="0" max="360" value="60">
-            <input type="range" id="end-color-h" class="color-slider" data-color="end" data-channel="h" min="0" max="360" value="260">
-          </div>
-          <div class="color-slider-container">
-            <label for="end-color-s">S</label>
-            <input type="number" id="end-color-s-value" class="color-value-input" min="0" max="100" value="100">
-            <input type="range" id="end-color-s" class="color-slider" data-color="end" data-channel="s" min="0" max="100" value="100">
-          </div>
-          <div class="color-slider-container">
-            <label for="end-color-l">L</label>
-            <input type="number" id="end-color-l-value" class="color-value-input" min="0" max="100" value="50">
-            <input type="range" id="end-color-l" class="color-slider" data-color="end" data-channel="l" min="0" max="100" value="50">
-          </div>
-          <div class="color-slider-container">
-            <label for="end-color-a">A</label>
-            <input type="number" id="end-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
-            <input type="range" id="end-color-a" class="color-slider" data-color="end" data-channel="a" min="0" max="1" value="1" step="0.01">
-          </div>
-        </div>
-      </div>
-
-      <div class="control-group">
-        <h3>Background Color</h3>
-        <div class="radio-group">
-          <div class="radio-option">
-            <input type="radio" id="bg-black" name="bg-color" value="black" checked>
-            <label for="bg-black">Black</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="bg-white" name="bg-color" value="white">
-            <label for="bg-white">White</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="bg-transparent" name="bg-color" value="transparent">
-            <label for="bg-transparent">Transparent</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="bg-custom" name="bg-color" value="custom">
-            <label for="bg-custom">Custom</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="control-group" id="custom-bg-color" style="display: none;">
-        <h4>Custom Background Color</h4>
-        <div class="color-slider-group">
-          <div class="color-slider-container">
-            <label for="bg-color-color-h">H</label>
-            <input type="number" id="bg-color-color-h-value" class="color-value-input" min="0" max="360" value="60">
-            <input type="range" id="bg-color-color-h" class="color-slider" data-color="bg-color" data-channel="h" min="0" max="360" value="260">
-          </div>
-          <div class="color-slider-container">
-            <label for="bg-color-color-s">S</label>
-            <input type="number" id="bg-color-color-s-value" class="color-value-input" min="0" max="100" value="100">
-            <input type="range" id="bg-color-color-s" class="color-slider" data-color="bg-color" data-channel="s" min="0" max="100" value="100">
-          </div>
-          <div class="color-slider-container">
-            <label for="bg-color-color-l">L</label>
-            <input type="number" id="bg-color-color-l-value" class="color-value-input" min="0" max="100" value="50">
-            <input type="range" id="bg-color-color-l" class="color-slider" data-color="bg-color" data-channel="l" min="0" max="100" value="50">
-          </div>
-          <div class="color-slider-container">
-            <label for="bg-color-color-a">A</label>
-            <input type="number" id="bg-color-color-a-value" class="color-value-input" min="0" max="1" value="1" step="0.01">
-            <input type="range" id="bg-color-color-a" class="color-slider" data-color="bg-color" data-channel="a" min="0" max="1" value="1" step="0.01">
-          </div>
-        </div>
-      </div>
-
-      <div class="control-group vertical-slider">
-        <label for="columns">Number of Columns:</label>
-        <div class="slider-with-input">
-          <input type="number" id="columns-value" class="value-input" min="10" max="300" value="150">
-          <input type="range" id="columns" class="range-input" min="10" max="300" value="150">
-        </div>
-      </div>
-
+      <h3>Save File</h3>
       <div class="control-group">
         <label for="png-width">PNG Width:</label>
         <input type="number" id="png-width" min="1" value="900">
         <button id="download-png" class="download-button">Download PNG</button>
       </div>
 
-      <div class="control-group">
-        <button id="download-svg" class="download-button">Download SVG</button>
-      </div>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>
