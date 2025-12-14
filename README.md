@@ -17,12 +17,10 @@ Three-color palette
 
 🖼️ Background color selection:
 
-Black
-White
-Transparent
-Custom RGB
+Flat Background
+Gradient Pixels
+Offset Pixels
 
-🔄 Invertible output
 📏 Adjustable number of columns (10-300)
 💾 PNG download option
 
@@ -43,18 +41,18 @@ npm (v6 or later)
 Installation
 
 Clone the repository:
-bashCopygit clone https://github.com/ellsabella/ascii-art-generator.git
+clone https://github.com/ellsabella/ascii-art-generator.git
 
 Navigate to the project directory:
-bashCopycd ascii-art-generator
+cd ascii-art-generator
 
 Install dependencies:
-bashCopynpm install
+npm install
 
 🖥️ Usage
 
 Start the development server:
-bashCopynpm run dev
+npm run dev
 
 Open your browser and navigate to http://localhost:3000 (or the port specified by Vite).
 Upload an image or use the default image.
@@ -64,7 +62,7 @@ Click "Download PNG" to save your masterpiece.
 
 🏗️ Building for Production
 To create a production-ready build:
-bashCopynpm run build
+npm run build
 The built files will be in the dist directory.
 🚢 Deployment
 This project is optimized for deployment on Vercel. Simply connect your GitHub repository to Vercel for automatic deployments of your main branch.
