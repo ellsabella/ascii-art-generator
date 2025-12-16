@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env
 img_dump
+src/glyphs.js
+
 
 # Editor directories and files
 .vscode/*

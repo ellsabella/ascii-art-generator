@@ -203,6 +203,168 @@
         </div>
       </div>
 
+      <h3>Shadows</h3>
+
+      <!-- Shadow mode -->
+      <div class="control-group" id="shadow-mode-group">
+        <label>Shadow Mode:</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="shadow-mode-off" name="shadow-mode" value="off" checked>
+            <label for="shadow-mode-off">Off</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="shadow-mode-single" name="shadow-mode" value="single">
+            <label for="shadow-mode-single">Single</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="shadow-mode-double" name="shadow-mode" value="double">
+            <label for="shadow-mode-double">Double</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Everything below hidden when mode=off -->
+      <div class="control-group" id="shadow-controls">
+
+        <!-- Colour mode -->
+        <div class="control-group" id="shadow-color-mode-group">
+          <label>Shadow Colour Mode:</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" id="shadow-color-mode-offset" name="shadow-color-mode" value="offset" checked>
+              <label for="shadow-color-mode-offset">Offset from main</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" id="shadow-color-mode-manual" name="shadow-color-mode" value="manual">
+              <label for="shadow-color-mode-manual">Manual</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Double only -->
+        <div class="control-group" id="shadow-symmetric-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="shadow-symmetric" checked>
+            Double shadow is symmetric
+          </label>
+        </div>
+
+        <!-- Shared -->
+        <div class="control-group">
+          <label>Shadow Alpha Multiplier:</label>
+          <div class="slider-with-input">
+            <input type="number" id="shadow-alpha-mult-value" class="value-input" step="0.01" min="0" max="1" value="0.6">
+            <input type="range" id="shadow-alpha-mult" class="range-input" step="0.01" min="0" max="1" value="0.6">
+          </div>
+        </div>
+
+        <!-- ========================= -->
+        <!-- Shadow 1 group -->
+        <!-- ========================= -->
+        <div class="control-group shadow-layer" id="shadow1-group">
+          <h4>Shadow 1</h4>
+
+          <!-- Geometry -->
+          <div class="control-group">
+            <label>Offset (cell):</label>
+            <div class="slider-with-input">
+              <label for="shadow-dx">X</label>
+              <input type="number" id="shadow-dx-value" class="value-input" step="0.01" min="-1" max="1" value="0.15">
+              <input type="range" id="shadow-dx" class="range-input" step="0.01" min="-1" max="1" value="0.15">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-dy">Y</label>
+              <input type="number" id="shadow-dy-value" class="value-input" step="0.01" min="-1" max="1" value="0.10">
+              <input type="range" id="shadow-dy" class="range-input" step="0.01" min="-1" max="1" value="0.10">
+            </div>
+          </div>
+
+          <!-- Offset mode -->
+          <div class="control-group" id="shadow-offset-controls">
+            <label>Colour Offset:</label>
+            <div class="slider-with-input">
+              <label for="shadow-h">H</label>
+              <input type="number" id="shadow-h-value" class="value-input" step="1" min="-180" max="180" value="20">
+              <input type="range" id="shadow-h" class="range-input" step="1" min="-180" max="180" value="20">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-s">S</label>
+              <input type="number" id="shadow-s-value" class="value-input" step="1" min="-100" max="100" value="10">
+              <input type="range" id="shadow-s" class="range-input" step="1" min="-100" max="100" value="10">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-l">L</label>
+              <input type="number" id="shadow-l-value" class="value-input" step="1" min="-100" max="100" value="-10">
+              <input type="range" id="shadow-l" class="range-input" step="1" min="-100" max="100" value="-10">
+            </div>
+          </div>
+
+          <!-- Manual mode -->
+          <div class="control-group" id="shadow-manual-controls">
+            <label>Colour:</label>
+            <div class="color-alpha-row">
+              <input type="color" id="shadow1-color" value="#ff0050">
+              <input type="range" id="shadow1-alpha" min="0" max="100" value="60">
+              <input type="number" id="shadow1-alpha-value" min="0" max="100" value="60">
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================= -->
+        <!-- Shadow 2 group -->
+        <!-- ========================= -->
+        <div class="control-group shadow-layer" id="shadow2-group">
+          <h4>Shadow 2</h4>
+
+          <!-- Geometry (Double + NOT symmetric only) -->
+          <div class="control-group" id="shadow-offset-2-panel">
+            <label>Offset (cell):</label>
+            <div class="slider-with-input">
+              <label for="shadow-dx2">X</label>
+              <input type="number" id="shadow-dx2-value" class="value-input" step="0.01" min="-1" max="1" value="-0.15">
+              <input type="range" id="shadow-dx2" class="range-input" step="0.01" min="-1" max="1" value="-0.15">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-dy2">Y</label>
+              <input type="number" id="shadow-dy2-value" class="value-input" step="0.01" min="-1" max="1" value="-0.10">
+              <input type="range" id="shadow-dy2" class="range-input" step="0.01" min="-1" max="1" value="-0.10">
+            </div>
+          </div>
+
+          <!-- Offset colour controls (Offset mode + Double + NOT symmetric only) -->
+          <div class="control-group" id="shadow-offset-2-color-panel">
+            <label>Colour Offset:</label>
+            <div class="slider-with-input">
+              <label for="shadow-h2">H</label>
+              <input type="number" id="shadow-h2-value" class="value-input" step="1" min="-180" max="180" value="-20">
+              <input type="range" id="shadow-h2" class="range-input" step="1" min="-180" max="180" value="-20">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-s2">S</label>
+              <input type="number" id="shadow-s2-value" class="value-input" step="1" min="-100" max="100" value="10">
+              <input type="range" id="shadow-s2" class="range-input" step="1" min="-100" max="100" value="10">
+            </div>
+            <div class="slider-with-input">
+              <label for="shadow-l2">L</label>
+              <input type="number" id="shadow-l2-value" class="value-input" step="1" min="-100" max="100" value="-10">
+              <input type="range" id="shadow-l2" class="range-input" step="1" min="-100" max="100" value="-10">
+            </div>
+          </div>
+
+          <!-- Manual colour controls (Double + Manual only) -->
+          <div class="control-group" id="shadow2-manual-row">
+            <label>Colour:</label>
+            <div class="color-alpha-row">
+              <input type="color" id="shadow2-color" value="#00c8ff">
+              <input type="range" id="shadow2-alpha" min="0" max="100" value="60">
+              <input type="number" id="shadow2-alpha-value" min="0" max="100" value="60">
+            </div>
+          </div>
+        </div>
+
+      </div>
+
       <h3>Save File</h3>
       <div class="control-group">
         <label for="png-width">PNG Width:</label>

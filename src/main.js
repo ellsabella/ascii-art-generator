@@ -3,6 +3,7 @@ import "./styles.css";
 import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 import { updateColorMap, kMeansColorClustering, hslToRgb, rgbToHsl } from "./colorUtils.js";
+import { applyHslOffsetToRgb, clamp } from "./colorUtils.js";
 
 let p5Instance;
 let animationFrameId = null;
@@ -235,185 +236,279 @@ function createSketch(p) {
     }
   }
 
-  function drawAsciiArt(graphics = null) {
-    console.log("Drawing ASCII art, graphics null?", graphics === null);
+function drawAsciiArt(graphics = null) {
+  // console.log("Drawing ASCII art, graphics null?", graphics === null);
 
-    const isOffscreen = graphics !== null;
-    const canvas = isOffscreen ? graphics : p;
-    const imgToUse = isOffscreen ? highResImg : window.img;
+  const isOffscreen = graphics !== null;
+  const canvas = isOffscreen ? graphics : p;
+  const imgToUse = isOffscreen ? highResImg : window.img;
 
-    // ---- Flat background (ALWAYS) uses bgColorRGB + bgAlpha
-    const [br, bg, bb] = window.bgColorRGB || [0, 0, 0];
-    const bgA = Math.round((window.bgAlpha ?? 1) * 255);
-    canvas.background(br, bg, bb, bgA);
-    canvas.textFont(font);
+  // ---- Flat background (ALWAYS) uses bgColorRGB + bgAlpha
+  const [br, bg, bb] = window.bgColorRGB || [0, 0, 0];
+  const bgA = Math.round((window.bgAlpha ?? 1) * 255);
+  canvas.background(br, bg, bb, bgA);
+  canvas.textFont(font);
 
-    const useOriginalGrid = window.useImageColors && gridCellColors;
+  const useOriginalGrid = window.useImageColors && gridCellColors;
 
-    let scaledGridColumns, scaledGridRows;
-    if (useOriginalGrid) {
-      // When using image colors, keep the original grid so indices line up
-      scaledGridColumns = window.gridColumns;
-      scaledGridRows = gridRows;
-    } else {
-      // Scale grid to the render target (e.g. offscreen PNG buffer)
-      const scaleX = canvas.width / p.width;
-      const scaleY = canvas.height / p.height;
-      scaledGridColumns = Math.floor(window.gridColumns * scaleX);
-      scaledGridRows = Math.floor(gridRows * scaleY);
+  let scaledGridColumns, scaledGridRows;
+  if (useOriginalGrid) {
+    scaledGridColumns = window.gridColumns;
+    scaledGridRows = gridRows;
+  } else {
+    const scaleX = canvas.width / p.width;
+    const scaleY = canvas.height / p.height;
+    scaledGridColumns = Math.max(1, Math.floor(window.gridColumns * scaleX));
+    scaledGridRows = Math.max(1, Math.floor(gridRows * scaleY));
+  }
+
+  const cellWidth = canvas.width / scaledGridColumns;
+  const cellHeight = canvas.height / scaledGridRows;
+
+  // No shrink: allow glyph to use full cell baseline/leading
+  const fontSize = Math.min(cellWidth, cellHeight);
+  canvas.textSize(fontSize);
+  canvas.textAlign(p.CENTER, p.CENTER);
+  canvas.textLeading(fontSize);
+
+  imgToUse.loadPixels();
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  // ---------------------------------------------------------------------------
+  // Background mode
+  // ---------------------------------------------------------------------------
+  const advancedBgMode = window.advancedBgMode || "off";
+
+  // ---------------------------------------------------------------------------
+  // Shadow config (Stage 2)
+  // ---------------------------------------------------------------------------
+  const shadowMode = window.shadowMode || "off";                 // "off" | "single" | "double"
+  const shadowColorMode = window.shadowColorMode || "offset";    // "manual" | "offset"
+
+  // IMPORTANT: coerce checkbox/radio values into a real boolean
+  const coerceBool = (v, fallback = true) => {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") {
+      if (v.toLowerCase() === "true") return true;
+      if (v.toLowerCase() === "false") return false;
+    }
+    return fallback;
+  };
+
+  const shadowSymmetric = coerceBool(window.shadowSymmetric, true);
+
+  // Offsets stored as cell fractions
+  const shadowDxFrac = typeof window.shadowDx === "number" ? window.shadowDx : 0.15;
+  const shadowDyFrac = typeof window.shadowDy === "number" ? window.shadowDy : 0.10;
+
+  // Only used when symmetric is OFF (otherwise we mirror dx1/dy1)
+  const shadowDx2Frac =
+    typeof window.shadowDx2 === "number" ? window.shadowDx2 : -shadowDxFrac;
+  const shadowDy2Frac =
+    typeof window.shadowDy2 === "number" ? window.shadowDy2 : -shadowDyFrac;
+
+  const shadowAlphaMult =
+    typeof window.shadowAlphaMult === "number" ? window.shadowAlphaMult : 0.6; // 0..1
+
+  // Manual shadow colours (RGB + A in 0..1)
+  const shadow1RGB = Array.isArray(window.shadow1RGB) ? window.shadow1RGB : [255, 0, 80];
+  const shadow2RGB = Array.isArray(window.shadow2RGB) ? window.shadow2RGB : [0, 200, 255];
+  const shadow1A = typeof window.shadow1A === "number" ? window.shadow1A : 0.6;
+  const shadow2A = typeof window.shadow2A === "number" ? window.shadow2A : 0.6;
+
+  const getP5Rgb = (col) => {
+    if (!col || !col.levels || col.levels.length < 3) return [255, 255, 255];
+    return [col.levels[0], col.levels[1], col.levels[2]];
+  };
+
+  const getP5Alpha01 = (col) => {
+    if (!col || !col.levels || col.levels.length < 4) return 1;
+    return clamp((col.levels[3] ?? 255) / 255, 0, 1);
+  };
+
+  const makeShadowFill = (baseCharColor, layerIndex) => {
+    // layerIndex: 1 or 2
+    const mode = window.shadowColorMode || "offset"; // "manual" | "offset"
+    const alphaMult =
+      typeof window.shadowAlphaMult === "number" ? window.shadowAlphaMult : 0.6;
+
+    if (mode === "manual") {
+      const rgb = layerIndex === 1
+        ? (Array.isArray(window.shadow1RGB) ? window.shadow1RGB : [255, 0, 80])
+        : (Array.isArray(window.shadow2RGB) ? window.shadow2RGB : [0, 200, 255]);
+
+      const a = layerIndex === 1
+        ? (typeof window.shadow1A === "number" ? window.shadow1A : 0.6)
+        : (typeof window.shadow2A === "number" ? window.shadow2A : 0.6);
+
+      const alpha255 = Math.round(clamp(a * alphaMult, 0, 1) * 255);
+      return p.color(rgb[0] ?? 255, rgb[1] ?? 255, rgb[2] ?? 255, alpha255);
     }
 
-    const cellWidth = canvas.width / scaledGridColumns;
-    const cellHeight = canvas.height / scaledGridRows;
+    // "offset" mode: derive from main glyph colour using shared applyHslOffsetToRgb()
+    const baseRgb = getP5Rgb(baseCharColor);
 
-    const fontSize = Math.min(cellWidth, cellHeight) * 0.9;
-    canvas.textSize(fontSize);
-    canvas.textAlign(p.CENTER, p.CENTER);
+    const shH = typeof window.shadowHueOffset === "number" ? window.shadowHueOffset : 20;
+    const shS = typeof window.shadowSatOffset === "number" ? window.shadowSatOffset : 10;
+    const shL = typeof window.shadowLightOffset === "number" ? window.shadowLightOffset : -10;
 
-    imgToUse.loadPixels();
+    // layer 2 uses opposite hue for a chromatic feel
+    const hueOffset = layerIndex === 2 ? -shH : shH;
 
-    const advancedBgMode = window.advancedBgMode || "off";
+    const outRgb = applyHslOffsetToRgb(baseRgb, hueOffset, shS, shL);
 
-    for (let y = 0; y < scaledGridRows; y++) {
-      for (let x = 0; x < scaledGridColumns; x++) {
-        // Map cell → image region
-        const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
-        const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
-        const w = Math.ceil(imgToUse.width / scaledGridColumns);
-        const h = Math.ceil(imgToUse.height / scaledGridRows);
+    const baseA01 = getP5Alpha01(baseCharColor);
+    const alpha255 = Math.round(clamp(baseA01 * alphaMult, 0, 1) * 255);
 
-        // Brightness and character
-        const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
-        const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+    if (!outRgb) return p.color(255, 255, 255, alpha255);
+    return p.color(outRgb[0], outRgb[1], outRgb[2], alpha255);
+  };
 
-        const charIndex = Math.floor(
-          p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
-        );
-        const c = window.density.charAt(charIndex);
+  const drawGlyph = (ch, xCenter, yCenter, fillCol, dxPx = 0, dyPx = 0) => {
+    canvas.fill(fillCol);
+    canvas.text(ch, xCenter + dxPx, yCenter + dyPx);
+  };
 
-        // Character color
-        let charColor;
-        if (window.useImageColors && gridCellColors) {
-          const colorIndex = y * scaledGridColumns + x;
-          if (colorIndex < gridCellColors.length) {
-            const colorArray = gridCellColors[colorIndex];
-            if (Array.isArray(colorArray) && colorArray.length === 3) {
-              charColor = p.color(colorArray[0], colorArray[1], colorArray[2]);
-            } else {
-              console.warn("Invalid color data at index", colorIndex, colorArray);
-              charColor = p.color(255);
-            }
+  const drawShadows = shadowMode === "single" || shadowMode === "double";
+
+  // ---------------------------------------------------------------------------
+  // Main loop
+  // ---------------------------------------------------------------------------
+  for (let y = 0; y < scaledGridRows; y++) {
+    for (let x = 0; x < scaledGridColumns; x++) {
+      // Map cell → image region
+      const imgX = Math.floor((x / scaledGridColumns) * imgToUse.width);
+      const imgY = Math.floor((y / scaledGridRows) * imgToUse.height);
+      const w = Math.ceil(imgToUse.width / scaledGridColumns);
+      const h = Math.ceil(imgToUse.height / scaledGridRows);
+
+      // Brightness and character
+      const avg = getAverageGrayscale(imgToUse, imgX, imgY, w, h);
+      const adjustedAvg = adjustBrightnessContrast(avg, window.cF, window.mP);
+
+      const charIndex = Math.floor(
+        p.map(adjustedAvg, 0, 255, window.density.length - 1, 0)
+      );
+      const c = window.density.charAt(charIndex);
+
+      // Character color
+      let charColor;
+      if (window.useImageColors && gridCellColors) {
+        const colorIndex = y * scaledGridColumns + x;
+        if (colorIndex < gridCellColors.length) {
+          const arr = gridCellColors[colorIndex];
+          if (Array.isArray(arr) && arr.length === 3) {
+            charColor = p.color(arr[0], arr[1], arr[2]);
           } else {
             charColor = p.color(255);
           }
-        } else if (colorMap) {
-          charColor = colorMap.get(c);
-        }
-
-        // ---- Pixel background per cell (optional)
-        let bgRectColor = null;
-
-        // Base RGB for HSL offset mode
-        let baseRgbForHslOffset = null;
-
-        if (charColor) {
-          // Prefer the character color as base
-          const [cr, cg, cb] = charColor.levels;
-          baseRgbForHslOffset = [cr, cg, cb];
-        } else if (window.useImageColors && gridCellColors) {
-          // If no charColor (e.g. space) but image colors exist, use the image cell color
-          const cellIndex = y * scaledGridColumns + x;
-          if (cellIndex < gridCellColors.length) {
-            const colorArray = gridCellColors[cellIndex];
-            if (Array.isArray(colorArray) && colorArray.length === 3) {
-              baseRgbForHslOffset = [colorArray[0], colorArray[1], colorArray[2]];
-            }
-          }
-        }
-
-        if (!baseRgbForHslOffset) {
-          // Fallback: build a neutral grey from brightness when no color is available
-          const lGrey = Math.max(0, Math.min(100, (adjustedAvg / 255) * 100));
-          const [gr, gg, gb] = hslToRgb(0, 0, lGrey);
-          baseRgbForHslOffset = [gr, gg, gb];
-        }
-
-        switch (advancedBgMode) {
-          case "hslOffset": {
-            const bg = getHslOffsetBgColor(baseRgbForHslOffset, adjustedAvg);
-            if (bg) {
-              // Force pixel alpha to match bgAlpha slider
-              bg.setAlpha(bgA);
-              bgRectColor = bg;
-            }
-            break;
-          }
-
-          case "colorPicker": {
-            // Use the ONE shared picker colour as the base for the gradient pixels
-            const [pr, pg, pb] = window.bgColorRGB || [120, 170, 255];
-
-            // Convert base to HSL, then replace L with brightness-derived lightness
-            const [h, s] = rgbToHsl(pr, pg, pb);
-            const l = Math.round((adjustedAvg / 255) * 100);
-            const [r, g, b] = hslToRgb(h, s, l);
-
-            bgRectColor = p.color(r, g, b, bgA);
-            break;
-          }
-
-          case "off":
-          default:
-            // no pixel rects
-            break;
-        }
-
-        if (bgRectColor) {
-          canvas.noStroke();
-          canvas.fill(bgRectColor);
-          canvas.rect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-        }
-
-        // Draw the character on top
-        if (charColor) {
-          canvas.fill(charColor);
         } else {
-          canvas.fill(255);
+          charColor = p.color(255);
+        }
+      } else if (colorMap) {
+        charColor = colorMap.get(c);
+      }
+
+      const baseChar = charColor || p.color(255);
+
+      // ---- Pixel background per cell (optional)
+      let bgRectColor = null;
+
+      // Decide a base RGB for bg offset mode
+      let baseRgbForHslOffset = null;
+      if (charColor) {
+        baseRgbForHslOffset = getP5Rgb(charColor);
+      } else if (window.useImageColors && gridCellColors) {
+        const cellIndex = y * scaledGridColumns + x;
+        const arr = gridCellColors?.[cellIndex];
+        if (Array.isArray(arr) && arr.length === 3) baseRgbForHslOffset = [arr[0], arr[1], arr[2]];
+      }
+      if (!baseRgbForHslOffset) {
+        const lGrey = clamp((adjustedAvg / 255) * 100, 0, 100);
+        const [gr, gg, gb] = hslToRgb(0, 0, lGrey);
+        baseRgbForHslOffset = [gr, gg, gb];
+      }
+
+      switch (advancedBgMode) {
+        case "hslOffset": {
+          const rgb = applyHslOffsetToRgb(
+            baseRgbForHslOffset,
+            window.hOffset || 0,
+            window.sOffset || 0,
+            window.lOffset || 0
+          );
+          if (rgb) bgRectColor = p.color(rgb[0], rgb[1], rgb[2], bgA);
+          break;
         }
 
-        const xPos = (x + 0.5) * cellWidth;
-        const yPos = (y + 0.5) * cellHeight;
-        canvas.text(c, xPos, yPos);
+        case "colorPicker": {
+          const [pr, pg, pb] = window.bgColorRGB || [120, 170, 255];
+          const [hh, ss] = rgbToHsl(pr, pg, pb);
+          const ll = Math.round((adjustedAvg / 255) * 100);
+          const [r, g, b] = hslToRgb(hh, ss, ll);
+          bgRectColor = p.color(r, g, b, bgA);
+          break;
+        }
+
+        case "off":
+        default:
+          break;
       }
+
+      if (bgRectColor) {
+        canvas.noStroke();
+        canvas.fill(bgRectColor);
+
+        // Pixel-perfect rects (avoid seams)
+        const x0 = Math.floor(x * cellWidth);
+        const y0 = Math.floor(y * cellHeight);
+        const x1 = Math.ceil((x + 1) * cellWidth);
+        const y1 = Math.ceil((y + 1) * cellHeight);
+        canvas.rect(x0, y0, x1 - x0, y1 - y0);
+      }
+
+      // Cell center
+      const xPos = (x + 0.5) * cellWidth;
+      const yPos = (y + 0.5) * cellHeight;
+
+      // Shadow offsets (cell fraction → px)
+      const dx1 = shadowDxFrac * cellWidth;
+      const dy1 = shadowDyFrac * cellHeight;
+
+      let dx2 = 0, dy2 = 0;
+      const isDouble = shadowMode === "double";
+
+      if (isDouble) {
+        if (shadowSymmetric) {
+          dx2 = -dx1;
+          dy2 = -dy1;
+        } else {
+          dx2 = shadowDx2Frac * cellWidth;
+          dy2 = shadowDy2Frac * cellHeight;
+        }
+      }
+
+      // Shadows behind
+      if (drawShadows) {
+        if (shadowMode === "double") {
+          drawGlyph(c, xPos, yPos, makeShadowFill(baseChar, 2), dx2, dy2);
+        }
+        drawGlyph(c, xPos, yPos, makeShadowFill(baseChar, 1), dx1, dy1);
+      }
+
+      // Main glyph
+      canvas.fill(baseChar);
+      canvas.text(c, xPos, yPos);
     }
   }
-
-
+}
   function getBgColor() {
     const rgb = window.bgColorRGB || [0, 0, 0];
     const a = typeof window.bgAlpha === "number" ? window.bgAlpha : 1;
     const [r, g, b] = rgb;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   } 
-
-  function getHslOffsetBgColor(baseRgb, adjustedAvg) {
-    if (!baseRgb || baseRgb.length < 3) return null;
-
-    let [r, g, b] = baseRgb;
-    let [h, s, l] = rgbToHsl(r, g, b); // h:0-360, s/l:0-100
-
-    // Apply offsets from UI
-    const hOffset = window.hOffset || 0;
-    const sOffset = window.sOffset || 0;
-    const lOffset = window.lOffset || 0;
-
-    h = (h + hOffset + 360) % 360;
-    s = Math.max(0, Math.min(100, s + sOffset));
-    l = Math.max(0, Math.min(100, l + lOffset));
-
-    const [rr, gg, bb] = hslToRgb(h, s, l);
-    return p.color(rr, gg, bb);
-  }
 
   function getAverageGrayscale(imgPixels, x, y, w, h) {
     let total = 0;

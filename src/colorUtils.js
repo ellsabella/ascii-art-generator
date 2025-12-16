@@ -173,3 +173,32 @@ function euclideanDistance(a, b) {
         Math.pow(a[2] - b[2], 2)
     );
 }
+
+export function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/**
+ * Apply HSL offsets to a base RGB.
+ * baseRgb: [r,g,b] (0..255)
+ * hOff: degrees
+ * sOff/lOff: -100..100
+ * returns [r,g,b]
+ */
+export function applyHslOffsetToRgb(baseRgb, hOff = 0, sOff = 0, lOff = 0) {
+  if (!baseRgb || baseRgb.length < 3) return null;
+
+  const [r, g, b] = baseRgb;
+  let [h, s, l] = rgbToHsl(r, g, b); // h:0-360, s/l:0-100
+
+  h = (h + (hOff || 0) + 360) % 360;
+  s = clamp(s + (sOff || 0), 0, 100);
+  l = clamp(l + (lOff || 0), 0, 100);
+
+  return hslToRgb(h, s, l);
+}
+
+export function withAlpha(rgb, a01 = 1) {
+  if (!rgb) return null;
+  return [rgb[0], rgb[1], rgb[2], Math.round(Math.max(0, Math.min(1, a01)) * 255)];
+}
