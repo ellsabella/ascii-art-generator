@@ -196,3 +196,46 @@ button:hover {
 .is-hidden {
     display: none !important;
 }
+
+/* Better spacing for shadow section */
+#shadow-controls .control-group {
+    margin-bottom: 14px;
+}
+
+#shadow-controls label {
+    margin-bottom: 6px;
+}
+
+/* Make slider rows breathe */
+#shadow-controls .slider-with-input {
+    gap: 10px;
+    margin: 6px 0;
+}
+
+/* Smaller labels in slider rows */
+#shadow-controls .slider-with-input label {
+    width: 28px;
+    margin: 0;
+}
+
+/* Checkbox row alignment */
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.shadow-layer {
+    border: 1px solid #ccc;
+    background: #fff;
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.shadow-layer h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #4CAF50;
+    padding-bottom: 4px;
+}

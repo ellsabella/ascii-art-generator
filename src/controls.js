@@ -1,11 +1,11 @@
-// import { extractDominantColors, assignColorsAndBackground, rgbToHsl, isGrayscale } from "./colorUtils.js";
+
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
 
 const DEFAULTS = {
   // image/colors
   useImageColors: true,
   colorCount: 2,
-  LERP: false,
+  LERP: true,
 
   // density
   baseDensity: "RBGHZ",
@@ -37,6 +37,31 @@ const DEFAULTS = {
   hOffset: -11,
   sOffset: 29,
   lOffset: -10,
+
+    // shadow
+  shadowMode: "off",          // "off" | "single" | "double"
+  shadowColorMode: "offset",  // "manual" | "offset"
+
+  // geometry (cell fractions, not pixels)
+  shadowDx: 0.15,
+  shadowDy: 0.10,
+  shadowDx2: -0.15,
+  shadowDy2: -0.10,
+  shadowSymmetric: true,      // for double mode
+
+  // alpha multiplier (applies to shadow layers, 0..1)
+  shadowAlphaMult: 0.6,
+
+  // offset-from-main colour controls (HSL offsets)
+  shadowHueOffset: 20,        // degrees
+  shadowSatOffset: 10,        // -100..100
+  shadowLightOffset: -10,     // -100..100
+
+  // manual colours (RGB + A, so they’re cheap to apply)
+  shadow1RGB: [255, 0, 80],
+  shadow1A: 0.6,
+  shadow2RGB: [0, 200, 255],
+  shadow2A: 0.6
 };
 
 function debounce(func, delay) {
@@ -68,12 +93,10 @@ export function initializeControls(p5Instance) {
 
   setupColorExtractionToggle();
 
-  // ASCII character colour pickers + radios
   setupCharColorPickers();
   setupColorCountRadios();
+  setupShadowControls();
 
-  // Optional: if you have LERP radios, make sure they are wired somewhere.
-  // If you already wire LERP elsewhere, ignore this.
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios && lerpRadios.length) {
     lerpRadios.forEach((r) => {
@@ -98,7 +121,6 @@ export function initializeControls(p5Instance) {
   // 3) Kick sketch update when ready
   // ---------------------------------------------------------------------------
   const runInitialRender = () => {
-    // If your architecture prefers updateDensity() (because it rebuilds window.density), call it.
     if (typeof window.updateDensity === "function") window.updateDensity();
     else window.updateSketch?.();
   };
@@ -106,7 +128,6 @@ export function initializeControls(p5Instance) {
   if (window.sketchReady) {
     runInitialRender();
   } else {
-    // Run once when sketch is ready
     window.addEventListener("sketchReady", runInitialRender, { once: true });
   }
 }
@@ -584,27 +605,6 @@ function updateCharPickerVisibility() {
   }
 }
 
-function setupColorCountRadios() {
-  const radios = document.querySelectorAll('input[name="color-count"]');
-  if (!radios.length) return;
-
-  // Initialize state from DOM
-  const checked = document.querySelector('input[name="color-count"]:checked');
-  window.colorCount = checked ? Number(checked.value) : Number(window.colorCount ?? 2);
-
-  // Apply visibility now
-  updateCharPickerVisibility();
-
-  // Listen
-  radios.forEach((r) => {
-    r.addEventListener("change", (e) => {
-      window.colorCount = Number(e.target.value);
-      updateCharPickerVisibility();
-      window.updateSketch?.();
-    });
-  });
-}
-
 function syncCharColorPickersUI() {
   const syncOne = (key) => {
     const prop = key + "Color"; // startColor/middleColor/endColor
@@ -629,63 +629,318 @@ function syncCharColorPickersUI() {
   syncOne("end");
 }
 
-// function updateColorControls() {
-//   if (window.useImageColors) return;
-
-//   const colorCountRadio = document.querySelector('input[name="color-count"]:checked');
-//   if (!colorCountRadio) return;
-
-//   window.colorCount = parseInt(colorCountRadio.value, 10);
-
-//   updateCharPickerVisibility();
-
-//   if (window.sketchReady) window.updateSketch?.();
-// }
-
 function applyDefaultsToState() {
-  window.useImageColors = DEFAULTS.useImageColors;
-  window.colorCount = DEFAULTS.colorCount;
-  window.LERP = DEFAULTS.LERP;
+  // ---- Core toggles
+  window.useImageColors = !!DEFAULTS.useImageColors;
+  window.colorCount = Number(DEFAULTS.colorCount ?? 2);
+  window.LERP = !!DEFAULTS.LERP;
 
-  window.baseDensity = DEFAULTS.baseDensity;
-  window.zeroCount = DEFAULTS.zeroCount;
-  window.spaceCount = DEFAULTS.spaceCount;
+  // ---- Density
+  window.baseDensity = String(DEFAULTS.baseDensity ?? "");
+  window.zeroCount = Number(DEFAULTS.zeroCount ?? 0);
+  window.spaceCount = Number(DEFAULTS.spaceCount ?? 0);
   window.density =
-    window.baseDensity + "0".repeat(window.zeroCount) + " ".repeat(window.spaceCount);
+    window.baseDensity +
+    "0".repeat(Math.max(0, window.zeroCount)) +
+    " ".repeat(Math.max(0, window.spaceCount));
 
-  window.cF = DEFAULTS.cF;
-  window.mP = DEFAULTS.mP;
+  // ---- Contrast
+  window.cF = Number(DEFAULTS.cF ?? 0.55);
+  window.mP = Number(DEFAULTS.mP ?? 141);
 
-  window.gridColumns = DEFAULTS.gridColumns;
-  window.printRes = DEFAULTS.printRes;
+  // ---- Grid / render
+  window.gridColumns = Number(DEFAULTS.gridColumns ?? 150);
+  window.printRes = Number(DEFAULTS.printRes ?? 900);
 
-  window.startColor = [...DEFAULTS.startColor];
-  window.middleColor = [...DEFAULTS.middleColor];
-  window.endColor = [...DEFAULTS.endColor];
+  // ---- Char colours (HSLA)
+  window.startColor = Array.isArray(DEFAULTS.startColor) ? [...DEFAULTS.startColor] : [30, 100, 100, 1];
+  window.middleColor = Array.isArray(DEFAULTS.middleColor) ? [...DEFAULTS.middleColor] : [45, 100, 50, 1];
+  window.endColor = Array.isArray(DEFAULTS.endColor) ? [...DEFAULTS.endColor] : [0, 0, 33, 1];
 
-  window.bgColorRGB = [...DEFAULTS.bgColorRGB];
-  window.bgAlpha = DEFAULTS.bgAlpha;
+  // ---- Flat background
+  window.bgColorRGB = Array.isArray(DEFAULTS.bgColorRGB) ? [...DEFAULTS.bgColorRGB] : [0, 0, 0];
+  window.bgAlpha = Number(DEFAULTS.bgAlpha ?? 1);
 
-  window.advancedBgMode = DEFAULTS.advancedBgMode;
-  window.pixelColorRGB = [...DEFAULTS.pixelColorRGB];
+  // ---- Pixel background mode
+  window.advancedBgMode = String(DEFAULTS.advancedBgMode ?? "off");
+  window.pixelColorRGB = Array.isArray(DEFAULTS.pixelColorRGB) ? [...DEFAULTS.pixelColorRGB] : [120, 170, 255];
 
-  window.hOffset = DEFAULTS.hOffset;
-  window.sOffset = DEFAULTS.sOffset;
-  window.lOffset = DEFAULTS.lOffset;
+  // ---- Offset pixels
+  window.hOffset = Number(DEFAULTS.hOffset ?? 0);
+  window.sOffset = Number(DEFAULTS.sOffset ?? 0);
+  window.lOffset = Number(DEFAULTS.lOffset ?? 0);
+
+  // ---- Shadows
+  window.shadowMode = String(DEFAULTS.shadowMode ?? "off");                 // off|single|double
+  window.shadowColorMode = String(DEFAULTS.shadowColorMode ?? "offset");    // offset|manual
+
+  window.shadowDx = Number(DEFAULTS.shadowDx ?? 0.15);
+  window.shadowDy = Number(DEFAULTS.shadowDy ?? 0.10);
+  window.shadowDx2 = Number(DEFAULTS.shadowDx2 ?? -0.15);
+  window.shadowDy2 = Number(DEFAULTS.shadowDy2 ?? -0.10);
+  window.shadowSymmetric = !!DEFAULTS.shadowSymmetric;
+
+  window.shadowAlphaMult = Number(DEFAULTS.shadowAlphaMult ?? 0.6);
+
+  // Shadow 1 colour offsets
+  window.shadowHueOffset = Number(DEFAULTS.shadowHueOffset ?? 20);
+  window.shadowSatOffset = Number(DEFAULTS.shadowSatOffset ?? 10);
+  window.shadowLightOffset = Number(DEFAULTS.shadowLightOffset ?? -10);
+
+  // Shadow 2 colour offsets (NEW; used when double + not symmetric in offset mode)
+  window.shadowHueOffset2 = Number(DEFAULTS.shadowHueOffset2 ?? -20);
+  window.shadowSatOffset2 = Number(DEFAULTS.shadowSatOffset2 ?? 10);
+  window.shadowLightOffset2 = Number(DEFAULTS.shadowLightOffset2 ?? -10);
+
+  window.shadow1RGB = Array.isArray(DEFAULTS.shadow1RGB) ? [...DEFAULTS.shadow1RGB] : [255, 0, 80];
+  window.shadow1A = Number(DEFAULTS.shadow1A ?? 0.6);
+  window.shadow2RGB = Array.isArray(DEFAULTS.shadow2RGB) ? [...DEFAULTS.shadow2RGB] : [0, 200, 255];
+  window.shadow2A = Number(DEFAULTS.shadow2A ?? 0.6);
 }
 
+function setupColorCountRadios() {
+  const radios = document.querySelectorAll('input[name="color-count"]');
+  if (!radios.length) return;
+
+  // Initialize state from DOM
+  const checked = document.querySelector('input[name="color-count"]:checked');
+  window.colorCount = checked ? Number(checked.value) : Number(window.colorCount ?? 2);
+
+  // Apply visibility now
+  updateCharPickerVisibility();
+
+  // Listen
+  radios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.colorCount = Number(e.target.value);
+      updateCharPickerVisibility();
+      window.updateSketch?.();
+    });
+  });
+}
+
+function setupShadowControls() {
+  const modeRadios = document.querySelectorAll('input[name="shadow-mode"]');
+  const colorModeRadios = document.querySelectorAll('input[name="shadow-color-mode"]');
+
+  const shadowControls = document.getElementById("shadow-controls");
+  const offsetControls = document.getElementById("shadow-offset-controls");
+  const manualControls = document.getElementById("shadow-manual-controls");
+  const shadow2Row = document.getElementById("shadow2-manual-row");
+
+  const symCheckbox = document.getElementById("shadow-symmetric");
+  const symCheckboxGroup = document.getElementById("shadow-symmetric-group");
+  const offset2Panel = document.getElementById("shadow-offset-2-panel");
+
+  // NEW: shadow2 colour-offset panel (inside #shadow-offset-controls)
+  const offset2ColorPanel = document.getElementById("shadow-offset-2-color-panel");
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const syncSliderPair = (sliderId, numberId, onChange, opts = {}) => {
+    const slider = document.getElementById(sliderId);
+    const number = document.getElementById(numberId);
+    if (!slider || !number) return;
+
+    const min = slider.min !== "" ? Number(slider.min) : (opts.min ?? -Infinity);
+    const max = slider.max !== "" ? Number(slider.max) : (opts.max ?? Infinity);
+
+    const apply = (raw) => {
+      let v = Number(raw);
+      if (Number.isNaN(v)) v = 0;
+      v = clamp(v, min, max);
+
+      slider.value = v;
+      number.value = v;
+      onChange(v);
+      window.updateSketch?.();
+    };
+
+    slider.addEventListener("input", (e) => apply(e.target.value));
+    number.addEventListener("change", (e) => apply(e.target.value));
+  };
+
+  // ---- defaults (state)
+  if (!window.shadowMode) window.shadowMode = "off";
+  if (!window.shadowColorMode) window.shadowColorMode = "offset";
+  if (typeof window.shadowDx !== "number") window.shadowDx = 0.15;
+  if (typeof window.shadowDy !== "number") window.shadowDy = 0.10;
+  if (typeof window.shadowDx2 !== "number") window.shadowDx2 = -window.shadowDx;
+  if (typeof window.shadowDy2 !== "number") window.shadowDy2 = -window.shadowDy;
+  if (typeof window.shadowSymmetric !== "boolean") window.shadowSymmetric = true;
+
+  if (typeof window.shadowHueOffset !== "number") window.shadowHueOffset = 20;
+  if (typeof window.shadowSatOffset !== "number") window.shadowSatOffset = 10;
+  if (typeof window.shadowLightOffset !== "number") window.shadowLightOffset = -10;
+
+  // NEW defaults for layer2 HSL offsets
+  if (typeof window.shadowHueOffset2 !== "number") window.shadowHueOffset2 = -20;
+  if (typeof window.shadowSatOffset2 !== "number") window.shadowSatOffset2 = 10;
+  if (typeof window.shadowLightOffset2 !== "number") window.shadowLightOffset2 = -10;
+
+  const refreshShadowVisibility = () => {
+    const mode = window.shadowMode || "off";             // off|single|double
+    const cMode = window.shadowColorMode || "offset";    // offset|manual
+    const isOff = mode === "off";
+    const isDouble = mode === "double";
+    const isSym = window.shadowSymmetric !== false;
+
+    if (shadowControls) shadowControls.style.display = isOff ? "none" : "block";
+
+    if (offsetControls) offsetControls.style.display = !isOff && cMode === "offset" ? "block" : "none";
+    if (manualControls) manualControls.style.display = !isOff && cMode === "manual" ? "block" : "none";
+
+    // manual shadow2 only in double+manual
+    if (shadow2Row) shadow2Row.style.display = isDouble && cMode === "manual" ? "block" : "none";
+
+    // symmetry checkbox only matters in double mode
+    if (symCheckboxGroup) symCheckboxGroup.style.display = isDouble ? "block" : "none";
+
+    // second geometry offsets only when double AND NOT symmetric
+    const showSecond = isDouble && !isSym;
+    // if (offset2Panel) offset2Panel.style.display = showSecond ? "block" : "none";
+    if (offset2Panel) offset2Panel.style.display = (isDouble && !isSym) ? "block" : "none";
+
+    // NEW: second colour-offset panel only when offset mode AND (double & not symmetric)
+    if (offset2ColorPanel) {
+      offset2ColorPanel.style.display = (!isOff && cMode === "offset" && showSecond) ? "block" : "none";
+    }
+    const shadow2Group = document.getElementById("shadow2-group");
+    if (shadow2Group) shadow2Group.style.display = (mode === "double") ? "block" : "none";
+  };
+
+  // ---- mode radios
+  modeRadios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.shadowMode = e.target.value; // off|single|double
+      refreshShadowVisibility();
+      window.updateSketch?.();
+    });
+  });
+
+  // ---- color mode radios
+  colorModeRadios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.shadowColorMode = e.target.value; // offset|manual
+      refreshShadowVisibility();
+      window.updateSketch?.();
+    });
+  });
+
+  // ---- main offsets
+  syncSliderPair("shadow-dx", "shadow-dx-value", (v) => {
+    window.shadowDx = v;
+
+    // if symmetric, mirror into dx2
+    if (window.shadowSymmetric !== false) {
+      window.shadowDx2 = -window.shadowDx;
+      const dx2 = document.getElementById("shadow-dx2");
+      const dx2v = document.getElementById("shadow-dx2-value");
+      if (dx2) dx2.value = window.shadowDx2;
+      if (dx2v) dx2v.value = window.shadowDx2;
+    }
+  }, { min: -1, max: 1 });
+
+  syncSliderPair("shadow-dy", "shadow-dy-value", (v) => {
+    window.shadowDy = v;
+
+    if (window.shadowSymmetric !== false) {
+      window.shadowDy2 = -window.shadowDy;
+      const dy2 = document.getElementById("shadow-dy2");
+      const dy2v = document.getElementById("shadow-dy2-value");
+      if (dy2) dy2.value = window.shadowDy2;
+      if (dy2v) dy2v.value = window.shadowDy2;
+    }
+  }, { min: -1, max: 1 });
+
+  // ---- second geometry offsets
+  syncSliderPair("shadow-dx2", "shadow-dx2-value", (v) => { window.shadowDx2 = v; }, { min: -1, max: 1 });
+  syncSliderPair("shadow-dy2", "shadow-dy2-value", (v) => { window.shadowDy2 = v; }, { min: -1, max: 1 });
+
+  // ---- alpha mult
+  syncSliderPair("shadow-alpha-mult", "shadow-alpha-mult-value", (v) => {
+    window.shadowAlphaMult = clamp(v, 0, 1);
+  }, { min: 0, max: 1 });
+
+  // ---- symmetric checkbox
+  if (symCheckbox) {
+    symCheckbox.addEventListener("change", (e) => {
+      window.shadowSymmetric = !!e.target.checked;
+
+      // when turning symmetry ON, immediately mirror offsets
+      if (window.shadowSymmetric) {
+        window.shadowDx2 = -window.shadowDx;
+        window.shadowDy2 = -window.shadowDy;
+        const dx2 = document.getElementById("shadow-dx2");
+        const dx2v = document.getElementById("shadow-dx2-value");
+        const dy2 = document.getElementById("shadow-dy2");
+        const dy2v = document.getElementById("shadow-dy2-value");
+        if (dx2) dx2.value = window.shadowDx2;
+        if (dx2v) dx2v.value = window.shadowDx2;
+        if (dy2) dy2.value = window.shadowDy2;
+        if (dy2v) dy2v.value = window.shadowDy2;
+      }
+
+      refreshShadowVisibility();
+      window.updateSketch?.();
+    });
+  }
+
+  // ---- offset H/S/L (Shadow 1)
+  syncSliderPair("shadow-h", "shadow-h-value", (v) => { window.shadowHueOffset = v; }, { min: -180, max: 180 });
+  syncSliderPair("shadow-s", "shadow-s-value", (v) => { window.shadowSatOffset = v; }, { min: -100, max: 100 });
+  syncSliderPair("shadow-l", "shadow-l-value", (v) => { window.shadowLightOffset = v; }, { min: -100, max: 100 });
+
+  // ---- NEW: offset H/S/L (Shadow 2)
+  syncSliderPair("shadow-h2", "shadow-h2-value", (v) => { window.shadowHueOffset2 = v; }, { min: -180, max: 180 });
+  syncSliderPair("shadow-s2", "shadow-s2-value", (v) => { window.shadowSatOffset2 = v; }, { min: -100, max: 100 });
+  syncSliderPair("shadow-l2", "shadow-l2-value", (v) => { window.shadowLightOffset2 = v; }, { min: -100, max: 100 });
+
+  // ---- manual controls
+  const bindManual = (idx) => {
+    const colorEl = document.getElementById(`shadow${idx}-color`);
+    const aSlider = document.getElementById(`shadow${idx}-alpha`);
+    const aValue = document.getElementById(`shadow${idx}-alpha-value`);
+
+    if (colorEl) {
+      colorEl.addEventListener("input", (e) => {
+        const rgb = hexToRgb(e.target.value);
+        if (!rgb) return;
+        window[`shadow${idx}RGB`] = [rgb.r, rgb.g, rgb.b];
+        window.updateSketch?.();
+      });
+    }
+
+    const applyA = (pct) => {
+      const v = clamp(Number(pct), 0, 100);
+      if (aSlider) aSlider.value = v;
+      if (aValue) aValue.value = v;
+      window[`shadow${idx}A`] = v / 100;
+      window.updateSketch?.();
+    };
+
+    if (aSlider) aSlider.addEventListener("input", (e) => applyA(e.target.value));
+    if (aValue) aValue.addEventListener("change", (e) => applyA(e.target.value));
+  };
+
+  bindManual(1);
+  bindManual(2);
+
+  refreshShadowVisibility();
+}
+
+
 function resetAllSettings() {
-  // 1) Reset state to defaults
+  // 1) Reset state
   applyDefaultsToState();
 
-  // 2) Sync the UI to match the state (no rebinding)
+  // 2) Clear any in-flight extraction state (safe)
+  window.isExtractingColors = false;
+
+  // 3) Sync UI (no rebinding)
   syncUIFromState();
 
-  // 3) Ensure correct visibility (depends on useImageColors + colorCount)
-  if (typeof toggleColorControls === "function") toggleColorControls();
-  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
-
-  // 4) Reset columns through the canonical path so grid + image-colors stay consistent
+  // 4) Reset columns through canonical path
   if (typeof window.updateColumns === "function") {
     window.updateColumns(DEFAULTS.gridColumns);
   } else {
@@ -696,16 +951,11 @@ function resetAllSettings() {
     if (columnsValue) columnsValue.value = DEFAULTS.gridColumns;
   }
 
-  // 5) If your "use image colors" pipeline has a worker state, clear it
-  window.isExtractingColors = false;
-  // If you store extracted colours on window, clear them too (optional, safe)
-  // window.gridCellColors = null; // only if you actually use this global
-
-  // 6) Trigger recalculation + redraw
+  // 5) Trigger redraw via your normal pipeline
   if (typeof window.updateDensity === "function") {
-    window.updateDensity(); // typically calls updateSketch internally
-  } else if (typeof window.updateSketch === "function") {
-    window.updateSketch();
+    window.updateDensity(); // typically calls updateSketch
+  } else {
+    window.updateSketch?.();
   }
 
   console.log("All settings have been reset to default values.");
@@ -741,6 +991,13 @@ function syncUIFromState() {
     radios.forEach((r) => (r.checked = r.value === String(value)));
   };
 
+  const syncPair = (sliderId, numberId, value) => {
+    const s = document.getElementById(sliderId);
+    const n = document.getElementById(numberId);
+    if (s) s.value = value;
+    if (n) n.value = value;
+  };
+
   // -------------------------
   // Use Image Colors
   // -------------------------
@@ -765,7 +1022,7 @@ function syncUIFromState() {
   // Contrast / midpoint
   // -------------------------
   if (typeof window.cF === "number") {
-    const cfPct = Math.round(clamp(window.cF, 0, 1.5) * 100); // your UI is 0–150
+    const cfPct = Math.round(clamp(window.cF, 0, 1.5) * 100); // UI 0–150
     setValue("cf", cfPct);
     setValue("cf-value", cfPct);
   }
@@ -777,16 +1034,13 @@ function syncUIFromState() {
   }
 
   // -------------------------
-  // Columns / print res
+  // Columns
   // -------------------------
   if (typeof window.gridColumns === "number") {
     const cols = Math.round(clamp(window.gridColumns, 10, 300));
     setValue("columns", cols);
     setValue("columns-value", cols);
   }
-
-  // If you have a PNG width input (not printRes) this stays separate.
-  // printRes is used internally; leave png-width alone unless you want to bind it.
 
   // -------------------------
   // Color count radios
@@ -804,37 +1058,13 @@ function syncUIFromState() {
 
   // -------------------------
   // Character color pickers (start/middle/end)
-  // Uses your existing sync helper if present
   // -------------------------
   if (typeof syncCharColorPickersUI === "function") {
     syncCharColorPickersUI();
-  } else {
-    // Fallback: do best effort directly from HSLA
-    const syncOne = (key) => {
-      const prop = key + "Color";
-      if (!Array.isArray(window[prop])) return;
-
-      const colorInput = document.getElementById(`${key}-color-input`);
-      const alphaSlider = document.getElementById(`${key}-alpha`);
-      const alphaValue = document.getElementById(`${key}-alpha-value`);
-
-      const [h, s, l, a = 1] = window[prop];
-      const [r, g, b] = hslToRgb(h, s, l);
-
-      if (colorInput) colorInput.value = rgbToHex(r, g, b);
-
-      const aPct = Math.round(clamp(a, 0, 1) * 100);
-      if (alphaSlider) alphaSlider.value = aPct;
-      if (alphaValue) alphaValue.value = aPct;
-    };
-
-    syncOne("start");
-    syncOne("middle");
-    syncOne("end");
   }
 
   // -------------------------
-  // Background: one picker + alpha + mode radios + offsets
+  // Background: picker + alpha + mode + offsets
   // -------------------------
   if (Array.isArray(window.bgColorRGB)) {
     const [r, g, b] = window.bgColorRGB;
@@ -864,23 +1094,105 @@ function syncUIFromState() {
     setValue("l-offset-value", window.lOffset);
   }
 
-  // -------------------------
-  // Final: visibility based on state
-  // (do NOT call updateSketch here)
-  // -------------------------
-  if (typeof toggleColorControls === "function") toggleColorControls();
-  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
-
-  // Background controls visibility is handled inside setupBackgroundControls()
-  // via radio change listeners; but on reset/load we should force a UI sync:
+  // Background visibility rules
   const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
   if (hslPanel) hslPanel.style.display = window.advancedBgMode === "hslOffset" ? "block" : "none";
 
-  // Rule you wanted: single picker shown for off + colorPicker, hidden for hslOffset
   const bgColorInput = document.getElementById("bg-color-input");
   const bgColorLabel = document.querySelector('label[for="bg-color-input"]');
   const showBgPicker = window.advancedBgMode !== "hslOffset";
   if (bgColorInput) bgColorInput.style.display = showBgPicker ? "inline-block" : "none";
   if (bgColorLabel) bgColorLabel.style.display = showBgPicker ? "block" : "none";
+
+  // -------------------------
+  // SHADOWS: radios + values
+  // -------------------------
+  if (typeof window.shadowMode === "string") {
+    checkRadioByNameValue("shadow-mode", window.shadowMode);
+  }
+  if (typeof window.shadowColorMode === "string") {
+    checkRadioByNameValue("shadow-color-mode", window.shadowColorMode);
+  }
+
+  if (typeof window.shadowDx === "number") syncPair("shadow-dx", "shadow-dx-value", window.shadowDx);
+  if (typeof window.shadowDy === "number") syncPair("shadow-dy", "shadow-dy-value", window.shadowDy);
+
+  if (typeof window.shadowAlphaMult === "number") {
+    syncPair("shadow-alpha-mult", "shadow-alpha-mult-value", clamp(window.shadowAlphaMult, 0, 1));
+  }
+
+  // Symmetric checkbox (NOT radios)
+  setChecked("shadow-symmetric", window.shadowSymmetric !== false);
+
+  if (typeof window.shadowHueOffset === "number") syncPair("shadow-h", "shadow-h-value", window.shadowHueOffset);
+  if (typeof window.shadowSatOffset === "number") syncPair("shadow-s", "shadow-s-value", window.shadowSatOffset);
+  if (typeof window.shadowLightOffset === "number") syncPair("shadow-l", "shadow-l-value", window.shadowLightOffset);
+    // Shadow 2 colour offsets (NEW)
+  if (typeof window.shadowHueOffset2 === "number") syncPair("shadow-h2", "shadow-h2-value", window.shadowHueOffset2);
+  if (typeof window.shadowSatOffset2 === "number") syncPair("shadow-s2", "shadow-s2-value", window.shadowSatOffset2);
+  if (typeof window.shadowLightOffset2 === "number") syncPair("shadow-l2", "shadow-l2-value", window.shadowLightOffset2);
+
+
+  // Manual shadow colours
+  if (Array.isArray(window.shadow1RGB)) {
+    const [r, g, b] = window.shadow1RGB;
+    setValue("shadow1-color", rgbToHex(r, g, b));
+  }
+  if (typeof window.shadow1A === "number") {
+    const aPct = Math.round(clamp(window.shadow1A, 0, 1) * 100);
+    setValue("shadow1-alpha", aPct);
+    setValue("shadow1-alpha-value", aPct);
+  }
+
+  if (Array.isArray(window.shadow2RGB)) {
+    const [r, g, b] = window.shadow2RGB;
+    setValue("shadow2-color", rgbToHex(r, g, b));
+  }
+  if (typeof window.shadow2A === "number") {
+    const aPct = Math.round(clamp(window.shadow2A, 0, 1) * 100);
+    setValue("shadow2-alpha", aPct);
+    setValue("shadow2-alpha-value", aPct);
+  }
+
+  // Shadow offset #2 (independent)
+  if (typeof window.shadowDx2 === "number") syncPair("shadow-dx2", "shadow-dx2-value", window.shadowDx2);
+  if (typeof window.shadowDy2 === "number") syncPair("shadow-dy2", "shadow-dy2-value", window.shadowDy2);
+
+  // -------------------------
+  // SHADOWS: show/hide panels
+  // -------------------------
+  const mode = String(window.shadowMode ?? "off");          // off|single|double
+  const cMode = String(window.shadowColorMode ?? "offset"); // offset|manual
+  const isOff = mode === "off";
+  const isDouble = mode === "double";
+  const isSym = window.shadowSymmetric !== false;
+  const showSecond = isDouble && !isSym;
+
+  const shadowControls = document.getElementById("shadow-controls");
+  const offsetControls = document.getElementById("shadow-offset-controls");
+  const manualControls = document.getElementById("shadow-manual-controls");
+  const shadow2Row = document.getElementById("shadow2-manual-row");
+  const symGroup = document.getElementById("shadow-symmetric-group");
+  const offset2Panel = document.getElementById("shadow-offset-2-panel");
+  const offset2ColorPanel = document.getElementById("shadow-offset-2-color-panel"); // NEW
+
+  if (shadowControls) shadowControls.style.display = isOff ? "none" : "block";
+  if (offsetControls) offsetControls.style.display = !isOff && cMode === "offset" ? "block" : "none";
+  if (manualControls) manualControls.style.display = !isOff && cMode === "manual" ? "block" : "none";
+
+  if (symGroup) symGroup.style.display = isDouble ? "block" : "none";
+  if (shadow2Row) shadow2Row.style.display = isDouble && cMode === "manual" ? "block" : "none";
+
+  // if (offset2Panel) offset2Panel.style.display = showSecond ? "block" : "none";
+  if (offset2Panel) offset2Panel.style.display = (isDouble && !isSym) ? "block" : "none";
+  if (offset2ColorPanel) offset2ColorPanel.style.display = (!isOff && cMode === "offset" && showSecond) ? "block" : "none";
+
+  // -------------------------
+  // Final: visibility based on state
+  // -------------------------
+  if (typeof toggleColorControls === "function") toggleColorControls();
+  if (typeof updateCharPickerVisibility === "function") updateCharPickerVisibility();
 }
+
+
 
