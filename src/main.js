@@ -420,21 +420,6 @@ function drawAsciiArt(graphics = null) {
       } else if (colorMap) {
         charColor = colorMap.get(c);
       }
-      // if (window.useImageColors && gridCellColors) {
-      //   const colorIndex = y * scaledGridColumns + x;
-      //   if (colorIndex < gridCellColors.length) {
-      //     const arr = gridCellColors[colorIndex];
-      //     if (Array.isArray(arr) && arr.length === 3) {
-      //       charColor = p.color(arr[0], arr[1], arr[2]);
-      //     } else {
-      //       charColor = p.color(255);
-      //     }
-      //   } else {
-      //     charColor = p.color(255);
-      //   }
-      // } else if (colorMap) {
-      //   charColor = colorMap.get(c);
-      // }
 
       const baseChar = charColor || p.color(255);
 
