@@ -103,10 +103,6 @@
         <label for="bg-color-input">Background colour</label>
         <input type="color" id="bg-color-input" />
       
-        <label for="bg-alpha">Background alpha</label>
-        <input type="range" id="bg-alpha" min="0" max="100" value="100" />
-        <input type="number" id="bg-alpha-value" min="0" max="100" value="100" />
-      
         <!-- Only shown when bg-style === "hslOffset" -->
         <div id="advanced-bg-hsl-offset-controls" style="display:none;">
           <h4>HSL offsets</h4>
@@ -129,6 +125,10 @@
             <input type="number" id="l-offset-value" min="-100" max="100" value="0" />
           </label>
         </div>
+
+        <label for="bg-alpha">Background alpha</label>
+        <input type="range" id="bg-alpha" min="0" max="100" value="100" />
+        <input type="number" id="bg-alpha-value" min="0" max="100" value="100" />
       </div>
       
       <h3>ASCII Colours</h3>
@@ -137,37 +137,35 @@
         <input type="checkbox" id="color-extraction-toggle">
       </div>
 
-      <!-- Image-colour glyph adjustments (visible only when Use Image Colors = ON) -->
+      
       <div class="control-group" id="image-glyph-controls" style="display:none;">
-        <label>Image Glyph Adjustments:</label>
-      
+        <h3>Main ASCII Character Layer</h3>
+
         <div class="control-group">
-          <label>Glyph Alpha:</label>
-          <div class="slider-with-input">
-            <input type="number" id="image-glyph-alpha-value" class="value-input" step="0.01" min="0" max="1" value="1">
-            <input type="range" id="image-glyph-alpha" class="range-input" step="0.01" min="0" max="1" value="1">
-          </div>
-        </div>
-      
-        <div class="control-group">
-          <label>HSL Offset (applied to extracted image colours):</label>
-      
+          <label>Hue, Saturation, Lightness and Alpha:</label>
+
           <div class="slider-with-input">
             <label for="image-glyph-h">H</label>
             <input type="number" id="image-glyph-h-value" class="value-input" step="1" min="-180" max="180" value="0">
             <input type="range" id="image-glyph-h" class="range-input" step="1" min="-180" max="180" value="0">
           </div>
-      
+
           <div class="slider-with-input">
             <label for="image-glyph-s">S</label>
             <input type="number" id="image-glyph-s-value" class="value-input" step="1" min="-100" max="100" value="0">
             <input type="range" id="image-glyph-s" class="range-input" step="1" min="-100" max="100" value="0">
           </div>
-      
+
           <div class="slider-with-input">
             <label for="image-glyph-l">L</label>
             <input type="number" id="image-glyph-l-value" class="value-input" step="1" min="-100" max="100" value="0">
             <input type="range" id="image-glyph-l" class="range-input" step="1" min="-100" max="100" value="0">
+          </div>
+
+          <div class="slider-with-input">
+            <label for="image-glyph-alpha">A</label>
+            <input type="number" id="image-glyph-alpha-value" class="value-input" step="0.01" min="0" max="1" value="1">
+            <input type="range" id="image-glyph-alpha" class="range-input" step="0.01" min="0" max="1" value="1">
           </div>
         </div>
       </div>
