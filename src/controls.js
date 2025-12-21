@@ -7,6 +7,12 @@ const DEFAULTS = {
   colorCount: 2,
   LERP: true,
 
+  // image glyph adjustments
+  imageGlyphHueOffset: 0,     // degrees -180..180
+  imageGlyphSatOffset: 0,     // -100..100
+  imageGlyphLightOffset: 0,   // -100..100
+  imageGlyphAlpha: 1,          // 0..1
+
   // density
   baseDensity: "RBGHZ",
   zeroCount: 2,
@@ -96,6 +102,7 @@ export function initializeControls(p5Instance) {
   setupCharColorPickers();
   setupColorCountRadios();
   setupShadowControls();
+  setupImageGlyphControls();
 
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios && lerpRadios.length) {
@@ -446,6 +453,57 @@ function setupColorExtractionToggle() {
   }
 }
 
+function setupImageGlyphControls() {
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const syncSliderPair = (sliderId, numberId, onChange, opts = {}) => {
+    const slider = document.getElementById(sliderId);
+    const number = document.getElementById(numberId);
+    if (!slider || !number) return;
+
+    const min = slider.min !== "" ? Number(slider.min) : (opts.min ?? -Infinity);
+    const max = slider.max !== "" ? Number(slider.max) : (opts.max ?? Infinity);
+
+    const apply = (raw) => {
+      let v = Number(raw);
+      if (Number.isNaN(v)) v = 0;
+      v = clamp(v, min, max);
+
+      slider.value = v;
+      number.value = v;
+      onChange(v);
+      window.updateSketch?.();
+    };
+
+    slider.addEventListener("input", (e) => apply(e.target.value));
+    number.addEventListener("change", (e) => apply(e.target.value));
+  };
+
+  // defaults
+  if (typeof window.imageGlyphHueOffset !== "number") window.imageGlyphHueOffset = 0;
+  if (typeof window.imageGlyphSatOffset !== "number") window.imageGlyphSatOffset = 0;
+  if (typeof window.imageGlyphLightOffset !== "number") window.imageGlyphLightOffset = 0;
+  if (typeof window.imageGlyphAlpha !== "number") window.imageGlyphAlpha = 1;
+
+  // alpha 0..1
+  syncSliderPair("image-glyph-alpha", "image-glyph-alpha-value", (v) => {
+    window.imageGlyphAlpha = clamp(v, 0, 1);
+  }, { min: 0, max: 1 });
+
+  // H/S/L
+  syncSliderPair("image-glyph-h", "image-glyph-h-value", (v) => {
+    window.imageGlyphHueOffset = v;
+  }, { min: -180, max: 180 });
+
+  syncSliderPair("image-glyph-s", "image-glyph-s-value", (v) => {
+    window.imageGlyphSatOffset = v;
+  }, { min: -100, max: 100 });
+
+  syncSliderPair("image-glyph-l", "image-glyph-l-value", (v) => {
+    window.imageGlyphLightOffset = v;
+  }, { min: -100, max: 100 });
+}
+
 function toggleColorControls() {
   const useImageColors = !!window.useImageColors;
 
@@ -461,7 +519,9 @@ function toggleColorControls() {
   const msg = document.getElementById("color-extraction-message");
   if (msg) msg.style.display = useImageColors ? "block" : "none";
 
-  // restore correct 1/2/3 visibility only when NOT using image colours
+  const imageGlyphControls = document.getElementById("image-glyph-controls");
+  if (imageGlyphControls) imageGlyphControls.style.display = useImageColors ? "block" : "none";
+
   if (!useImageColors) updateCharPickerVisibility();
 }
 
@@ -635,6 +695,12 @@ function applyDefaultsToState() {
   window.colorCount = Number(DEFAULTS.colorCount ?? 2);
   window.LERP = !!DEFAULTS.LERP;
 
+  // ---- Image glyph adjustments
+  window.imageGlyphHueOffset = Number(DEFAULTS.imageGlyphHueOffset ?? 0);
+  window.imageGlyphSatOffset = Number(DEFAULTS.imageGlyphSatOffset ?? 0);
+  window.imageGlyphLightOffset = Number(DEFAULTS.imageGlyphLightOffset ?? 0);
+  window.imageGlyphAlpha = Number(DEFAULTS.imageGlyphAlpha ?? 1);
+
   // ---- Density
   window.baseDensity = String(DEFAULTS.baseDensity ?? "");
   window.zeroCount = Number(DEFAULTS.zeroCount ?? 0);
@@ -798,7 +864,7 @@ function setupShadowControls() {
 
     // second geometry offsets only when double AND NOT symmetric
     const showSecond = isDouble && !isSym;
-    // if (offset2Panel) offset2Panel.style.display = showSecond ? "block" : "none";
+
     if (offset2Panel) offset2Panel.style.display = (isDouble && !isSym) ? "block" : "none";
 
     // NEW: second colour-offset panel only when offset mode AND (double & not symmetric)
@@ -1040,6 +1106,27 @@ function syncUIFromState() {
     const cols = Math.round(clamp(window.gridColumns, 10, 300));
     setValue("columns", cols);
     setValue("columns-value", cols);
+  }
+
+  // -------------------------
+  // IMAGE GLYPH (useImageColors=true): alpha + HSL offsets
+  // -------------------------
+  const imageGlyphControls = document.getElementById("image-glyph-controls");
+  if (imageGlyphControls) imageGlyphControls.style.display = !!window.useImageColors ? "block" : "none";
+
+  if (typeof window.imageGlyphAlpha === "number") {
+    const v = clamp(window.imageGlyphAlpha, 0, 1);
+    syncPair("image-glyph-alpha", "image-glyph-alpha-value", v);
+  }
+
+  if (typeof window.imageGlyphHueOffset === "number") {
+    syncPair("image-glyph-h", "image-glyph-h-value", window.imageGlyphHueOffset);
+  }
+  if (typeof window.imageGlyphSatOffset === "number") {
+    syncPair("image-glyph-s", "image-glyph-s-value", window.imageGlyphSatOffset);
+  }
+  if (typeof window.imageGlyphLightOffset === "number") {
+    syncPair("image-glyph-l", "image-glyph-l-value", window.imageGlyphLightOffset);
   }
 
   // -------------------------

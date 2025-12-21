@@ -396,16 +396,27 @@ function drawAsciiArt(graphics = null) {
       let charColor;
       if (window.useImageColors && gridCellColors) {
         const colorIndex = y * scaledGridColumns + x;
+
+        let r = 255, g = 255, b = 255;
         if (colorIndex < gridCellColors.length) {
           const arr = gridCellColors[colorIndex];
           if (Array.isArray(arr) && arr.length === 3) {
-            charColor = p.color(arr[0], arr[1], arr[2]);
-          } else {
-            charColor = p.color(255);
+            r = arr[0]; g = arr[1]; b = arr[2];
           }
-        } else {
-          charColor = p.color(255);
         }
+
+        // Apply image-glyph HSL offsets (global)
+        const hOff = typeof window.imageGlyphHueOffset === "number" ? window.imageGlyphHueOffset : 0;
+        const sOff = typeof window.imageGlyphSatOffset === "number" ? window.imageGlyphSatOffset : 0;
+        const lOff = typeof window.imageGlyphLightOffset === "number" ? window.imageGlyphLightOffset : 0;
+
+        const outRgb = applyHslOffsetToRgb([r, g, b], hOff, sOff, lOff) || [r, g, b];
+
+        // Apply global glyph alpha (0..1)
+        const a01 = typeof window.imageGlyphAlpha === "number" ? clamp(window.imageGlyphAlpha, 0, 1) : 1;
+        const a255 = Math.round(a01 * 255);
+
+        charColor = p.color(outRgb[0], outRgb[1], outRgb[2], a255);
       } else if (colorMap) {
         charColor = colorMap.get(c);
       }
