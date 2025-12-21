@@ -137,6 +137,41 @@
         <input type="checkbox" id="color-extraction-toggle">
       </div>
 
+      <!-- Image-colour glyph adjustments (visible only when Use Image Colors = ON) -->
+      <div class="control-group" id="image-glyph-controls" style="display:none;">
+        <label>Image Glyph Adjustments:</label>
+      
+        <div class="control-group">
+          <label>Glyph Alpha:</label>
+          <div class="slider-with-input">
+            <input type="number" id="image-glyph-alpha-value" class="value-input" step="0.01" min="0" max="1" value="1">
+            <input type="range" id="image-glyph-alpha" class="range-input" step="0.01" min="0" max="1" value="1">
+          </div>
+        </div>
+      
+        <div class="control-group">
+          <label>HSL Offset (applied to extracted image colours):</label>
+      
+          <div class="slider-with-input">
+            <label for="image-glyph-h">H</label>
+            <input type="number" id="image-glyph-h-value" class="value-input" step="1" min="-180" max="180" value="0">
+            <input type="range" id="image-glyph-h" class="range-input" step="1" min="-180" max="180" value="0">
+          </div>
+      
+          <div class="slider-with-input">
+            <label for="image-glyph-s">S</label>
+            <input type="number" id="image-glyph-s-value" class="value-input" step="1" min="-100" max="100" value="0">
+            <input type="range" id="image-glyph-s" class="range-input" step="1" min="-100" max="100" value="0">
+          </div>
+      
+          <div class="slider-with-input">
+            <label for="image-glyph-l">L</label>
+            <input type="number" id="image-glyph-l-value" class="value-input" step="1" min="-100" max="100" value="0">
+            <input type="range" id="image-glyph-l" class="range-input" step="1" min="-100" max="100" value="0">
+          </div>
+        </div>
+      </div>
+
       <div class="control-group" id="color-count-group">
         <label>Number of Colors:</label>
         <div class="radio-group">
