@@ -38,6 +38,12 @@
       </div>
 
       <div class="control-group">
+        <label for="video-upload">Upload Video (max 3s):</label>
+        <input type="file" id="video-upload" accept="video/*">
+        <div id="video-progress" style="display:none;"></div>
+      </div>
+
+      <div class="control-group">
         <button id="reset-image">Reset to Default Image</button>
       </div>
 
@@ -443,8 +449,8 @@
 
         <label for="gif-delay">GIF Frame Delay (ms):</label>
         <div class="slider-with-input">
-          <input type="number" id="gif-delay-value" class="value-input" min="20" max="2000" value="200">
-          <input type="range" id="gif-delay" class="range-input" min="20" max="2000" value="200">
+          <input type="number" id="gif-delay-value" class="value-input" min="10" max="2000" value="200">
+          <input type="range" id="gif-delay" class="range-input" min="10" max="2000" value="200">
         </div>
 
         <button id="download-gif" class="download-button">Download GIF</button>

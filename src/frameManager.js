@@ -1,7 +1,9 @@
 // frameManager.js — Multi-frame state management and timeline UI
 
-const MAX_FRAMES = 10;
-const MAX_FRAMES_WITH_MIRRORS = 19; // 10 base + 9 mirror = 19 (but pattern is N + N-2, so 10+8=18 max)
+let maxFrames = 10;
+
+function getMaxFrames() { return maxFrames; }
+function setMaxFrames(n) { maxFrames = n; }
 let propagateEnabled = true;
 let mirrorBaseCount = 0; // >0 when mirror frames are active (stores original frame count)
 
@@ -58,12 +60,31 @@ function applyState(state) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-frame image swap (video mode)
+// ---------------------------------------------------------------------------
+
+function swapPerFrameImage(index) {
+  const frame = frames[index];
+  if (!frame) return;
+  if (frame.image) {
+    window.img = frame.image;
+  }
+  if (typeof window._setGridCellColors === 'function') {
+    window._setGridCellColors(frame.gridCellColors || null);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Frame operations
 // ---------------------------------------------------------------------------
 
 function saveActiveFrame() {
   if (frames[activeFrameIndex]) {
     frames[activeFrameIndex].state = captureCurrentState();
+    // persist gridCellColors for video frames (per-frame image)
+    if (frames[activeFrameIndex].image && typeof window._getGridCellColors === 'function') {
+      frames[activeFrameIndex].gridCellColors = window._getGridCellColors();
+    }
   }
 }
 
@@ -79,6 +100,7 @@ function switchToFrame(index) {
   // load incoming frame
   activeFrameIndex = index;
   applyState(frames[index].state);
+  swapPerFrameImage(index);
 
   // sync UI and trigger render
   if (typeof window.syncUIFromState === 'function') window.syncUIFromState();
@@ -89,16 +111,19 @@ function switchToFrame(index) {
 }
 
 function addFrame() {
-  if (frames.length >= MAX_FRAMES) return;
+  if (frames.length >= maxFrames) return;
 
   // persist current frame before cloning
   saveActiveFrame();
 
+  const currentFrame = frames[activeFrameIndex];
   frames.push({
     id: nextFrameId++,
     state: captureCurrentState(),
     thumbnailDataURL: null,
     locked: false,
+    image: currentFrame?.image || null,
+    gridCellColors: currentFrame?.gridCellColors || null,
   });
 
   activeFrameIndex = frames.length - 1;
@@ -129,6 +154,7 @@ function deleteFrame(index) {
 
   // load the now-active frame
   applyState(frames[activeFrameIndex].state);
+  swapPerFrameImage(activeFrameIndex);
   if (typeof window.syncUIFromState === 'function') window.syncUIFromState();
   if (typeof window.updateDensity === 'function') window.updateDensity();
   else if (typeof window.updateSketch === 'function') window.updateSketch();
@@ -137,15 +163,50 @@ function deleteFrame(index) {
 }
 
 function initFrames() {
+  maxFrames = 10;
   frames = [{
     id: nextFrameId++,
     state: captureCurrentState(),
     thumbnailDataURL: null,
     locked: false,
+    image: null,
+    gridCellColors: null,
   }];
   activeFrameIndex = 0;
   mirrorBaseCount = 0;
   renderTimeline();
+}
+
+function initVideoFrames(frameImages, fps) {
+  maxFrames = 54;
+  frames = [];
+  activeFrameIndex = 0;
+  mirrorBaseCount = 0;
+
+  const baseState = captureCurrentState();
+
+  for (let i = 0; i < frameImages.length; i++) {
+    const clonedState = {};
+    for (const key of FRAME_STATE_KEYS) {
+      const val = baseState[key];
+      clonedState[key] = Array.isArray(val) ? [...val] : val;
+    }
+    frames.push({
+      id: nextFrameId++,
+      state: clonedState,
+      thumbnailDataURL: null,
+      locked: false,
+      image: frameImages[i],
+      gridCellColors: null, // lazy extraction
+    });
+  }
+
+  if (frames[0]?.image) {
+    window.img = frames[0].image;
+  }
+
+  renderTimeline();
+  return Math.round(1000 / fps);
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +237,7 @@ function updateAllThumbnails() {
 
   for (let i = 0; i < frames.length; i++) {
     applyState(frames[i].state);
+    swapPerFrameImage(i);
 
     // recompute density (derived field)
     window.density = window.baseDensity
@@ -190,6 +252,7 @@ function updateAllThumbnails() {
 
   // restore original frame
   applyState(frames[originalIndex].state);
+  swapPerFrameImage(originalIndex);
   window.density = window.baseDensity
     + '0'.repeat(Math.max(0, window.zeroCount))
     + ' '.repeat(Math.max(0, window.spaceCount));
@@ -263,7 +326,7 @@ function renderTimeline() {
 
   // disable add button at max
   if (addBtn) {
-    addBtn.disabled = frames.length >= MAX_FRAMES;
+    addBtn.disabled = frames.length >= maxFrames;
   }
 
   // sync mirror button label with state
@@ -315,6 +378,7 @@ function propagateToSubsequent() {
     }
     frames[i].state = cloned;
     frames[i].thumbnailDataURL = null; // mark stale
+    if (frames[i].image) frames[i].gridCellColors = null; // invalidate for video
   }
 }
 
@@ -334,7 +398,8 @@ function addMirrorFrames() {
   const mirrorCount = baseCount - 2;
   const totalAfter = baseCount + mirrorCount;
 
-  if (totalAfter > MAX_FRAMES_WITH_MIRRORS) return 'too_many';
+  const maxWithMirrors = maxFrames + maxFrames - 2;
+  if (totalAfter > maxWithMirrors) return 'too_many';
 
   // save current frame first
   saveActiveFrame();
@@ -354,6 +419,8 @@ function addMirrorFrames() {
       state: cloned,
       thumbnailDataURL: frames[i].thumbnailDataURL, // reuse thumbnail
       locked: false,
+      image: frames[i].image || null,
+      gridCellColors: frames[i].gridCellColors || null,
     });
   }
 
@@ -457,6 +524,7 @@ function lerpBetweenLocked() {
 
       frames[i].state = interpolated;
       frames[i].thumbnailDataURL = null;
+      if (frames[i].image) frames[i].gridCellColors = null; // invalidate for video
     }
   }
 
@@ -478,7 +546,7 @@ let isPlaying = false;
 
 function getPlaybackDelay() {
   const el = document.getElementById('gif-delay');
-  return el ? Math.max(20, parseInt(el.value, 10) || 200) : 200;
+  return el ? Math.max(10, parseInt(el.value, 10) || 200) : 200;
 }
 
 function startPlayback() {
@@ -494,6 +562,7 @@ function startPlayback() {
     // lightweight switch — skip propagation
     activeFrameIndex = next;
     applyState(frames[next].state);
+    swapPerFrameImage(next);
     if (typeof window.syncUIFromState === 'function') window.syncUIFromState();
     if (typeof window.updateSketch === 'function') window.updateSketch();
     renderTimeline();
@@ -535,6 +604,7 @@ function getFrames() { return frames; }
 function getActiveFrameIndex() { return activeFrameIndex; }
 function getFrameCount() { return frames.length; }
 function isMirrored() { return mirrorBaseCount > 0; }
+function isVideoMode() { return frames.length > 0 && frames[0].image != null; }
 
 function toggleFrameLock(index) {
   if (index < 0 || index >= frames.length) return;
@@ -555,13 +625,16 @@ export {
   addFrame,
   deleteFrame,
   initFrames,
+  initVideoFrames,
   updateActiveThumbnail,
   updateAllThumbnails,
   renderTimeline,
   getFrames,
   getActiveFrameIndex,
   getFrameCount,
-  MAX_FRAMES,
+  getMaxFrames,
+  setMaxFrames,
+  isVideoMode,
   setPropagateEnabled,
   isPropagateEnabled,
   propagateToSubsequent,

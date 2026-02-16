@@ -1,6 +1,7 @@
 
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
-import { addFrame, initFrames, setPropagateEnabled, addMirrorFrames, removeMirrorFrames, isMirrored, lerpBetweenLocked, togglePlayback } from "./frameManager.js";
+import { addFrame, initFrames, initVideoFrames, setMaxFrames, isVideoMode, setPropagateEnabled, addMirrorFrames, removeMirrorFrames, isMirrored, lerpBetweenLocked, togglePlayback } from "./frameManager.js";
+import { extractVideoFrames } from "./videoLoader.js";
 
 export const DEFAULTS = {
   // image/colors
@@ -84,6 +85,7 @@ export function initializeControls(p5Instance) {
   // 1) Wire UI listeners FIRST (so syncUIFromState doesn't get overwritten later)
   // ---------------------------------------------------------------------------
   setupFileUpload(p5Instance);
+  setupVideoUpload(p5Instance);
   setupResetImage(p5Instance);
   setupResetSettings();
 
@@ -157,6 +159,72 @@ function setupFileUpload(p5Instance) {
       { passive: true }
     );
   }
+}
+
+function setupVideoUpload(p5Instance) {
+  const videoUpload = document.getElementById('video-upload');
+  if (!videoUpload) return;
+
+  videoUpload.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const progressEl = document.getElementById('video-progress');
+    if (progressEl) {
+      progressEl.style.display = 'block';
+      progressEl.textContent = 'Extracting frames...';
+    }
+
+    try {
+      const { frames: imageDataFrames, fps } = await extractVideoFrames(file, {
+        maxDuration: 3,
+        maxFPS: 18,
+        maxWidth: 800,
+        onProgress(current, total) {
+          if (progressEl) progressEl.textContent = `Extracting frame ${current} / ${total}...`;
+        },
+      });
+
+      if (progressEl) progressEl.textContent = 'Converting frames...';
+
+      // Convert ImageData[] → p5.Image[]
+      const p5Images = [];
+      for (const imgData of imageDataFrames) {
+        const img = p5Instance.createImage(imgData.width, imgData.height);
+        img.loadPixels();
+        for (let i = 0; i < imgData.data.length; i++) {
+          img.pixels[i] = imgData.data[i];
+        }
+        img.updatePixels();
+        p5Images.push(img);
+      }
+
+      // Set the first frame as the active image and initialize the sketch
+      window.img = p5Images[0];
+      if (typeof window.initializeSketch === 'function') {
+        window.initializeSketch();
+      }
+
+      // Create video frames in the timeline and auto-set GIF delay
+      const delay = initVideoFrames(p5Images, fps);
+
+      const gifDelaySlider = document.getElementById('gif-delay');
+      const gifDelayNumber = document.getElementById('gif-delay-value');
+      if (gifDelaySlider) gifDelaySlider.value = delay;
+      if (gifDelayNumber) gifDelayNumber.value = delay;
+
+      if (progressEl) {
+        progressEl.textContent = `${p5Images.length} frames extracted at ${fps} FPS`;
+        setTimeout(() => { progressEl.style.display = 'none'; }, 3000);
+      }
+    } catch (err) {
+      console.error('Video extraction failed:', err);
+      if (progressEl) {
+        progressEl.textContent = 'Error: ' + err.message;
+        setTimeout(() => { progressEl.style.display = 'none'; }, 5000);
+      }
+    }
+  });
 }
 
 function setupResetImage(p5Instance) {
@@ -575,6 +643,7 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
   loadImagePromise
     .then((newImg) => {
       window.img = newImg;
+      setMaxFrames(10); // exit video mode
       if (callback) callback();
 
       if (typeof window.initializeSketch === "function") {

@@ -4,13 +4,18 @@ import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 import { updateColorMap, kMeansColorClustering, hslToRgb, rgbToHsl } from "./colorUtils.js";
 import { applyHslOffsetToRgb, clamp } from "./colorUtils.js";
-import { initFrames, updateActiveThumbnail, getFrames, getActiveFrameIndex, saveActiveFrame, applyState, propagateToSubsequent } from "./frameManager.js";
+import { initFrames, updateActiveThumbnail, getFrames, getActiveFrameIndex, saveActiveFrame, applyState, propagateToSubsequent, isVideoMode } from "./frameManager.js";
+import { extractGridColors } from "./extractGridColors.js";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
 let p5Instance;
 let animationFrameId = null;
 let colorExtractionWorker = new Worker(new URL('./color-extraction-worker.js', import.meta.url));
 let gridCellColors = null;
+
+// Accessors for frameManager to swap per-frame colors (video mode)
+window._getGridCellColors = () => gridCellColors;
+window._setGridCellColors = (c) => { gridCellColors = c; };
 
 function createSketch(p) {
   let font;
@@ -207,9 +212,20 @@ function createSketch(p) {
 
   p.windowResized = function () {
     setCanvasSize();
-    if (window.img) {
+    if (isVideoMode()) {
+      // resize all per-frame images in video mode
+      const allFrames = getFrames();
+      for (let i = 0; i < allFrames.length; i++) {
+        if (allFrames[i].image) {
+          allFrames[i].image.resize(p.width, 0);
+          allFrames[i].gridCellColors = null; // invalidate cached colors
+        }
+      }
+      window.img = allFrames[getActiveFrameIndex()]?.image || window.img;
+    } else if (window.img) {
       window.img.resize(p.width, 0);
     }
+    gridCellColors = null; // force re-extraction at new size
     gridRows = p.floor(window.gridColumns * (p.height / p.width));
     gw = p.width / window.gridColumns;
     createOffscreenBuffer();
@@ -631,6 +647,21 @@ function drawAsciiArt(graphics = null) {
     return dataURL;
   };
 
+  // Pre-extract grid colors for all video frames that are missing them (sync, for export)
+  function preExtractAllColors() {
+    if (!isVideoMode() || !window.useImageColors) return;
+    const allFrames = getFrames();
+    for (let i = 0; i < allFrames.length; i++) {
+      if (allFrames[i].image && !allFrames[i].gridCellColors) {
+        const imgCanvas = allFrames[i].image.canvas || allFrames[i].image.elt;
+        const ctx = imgCanvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
+        const gr = p.floor(window.gridColumns * (imgCanvas.height / imgCanvas.width));
+        allFrames[i].gridCellColors = extractGridColors(imgData, window.gridColumns, gr);
+      }
+    }
+  }
+
   window.downloadAllFrames = async function () {
     if (isDownloading) return;
     isDownloading = true;
@@ -642,6 +673,10 @@ function drawAsciiArt(graphics = null) {
       const allFrames = getFrames();
       const originalIndex = getActiveFrameIndex();
       saveActiveFrame();
+      const savedImg = window.img;
+      const savedColors = gridCellColors;
+
+      preExtractAllColors();
 
       const format = window.exportFormat || 'png';
       const quality = window.webpQuality || 0.8;
@@ -655,6 +690,10 @@ function drawAsciiArt(graphics = null) {
 
       for (let i = 0; i < allFrames.length; i++) {
         applyState(allFrames[i].state);
+
+        // swap per-frame image/colors for video mode
+        if (allFrames[i].image) window.img = allFrames[i].image;
+        if (allFrames[i].gridCellColors) gridCellColors = allFrames[i].gridCellColors;
 
         // recompute derived density field
         window.density = window.baseDensity
@@ -679,6 +718,8 @@ function drawAsciiArt(graphics = null) {
       }
 
       // restore original frame
+      window.img = savedImg;
+      gridCellColors = savedColors;
       applyState(allFrames[originalIndex].state);
       window.density = window.baseDensity
         + '0'.repeat(Math.max(0, window.zeroCount))
@@ -723,6 +764,10 @@ function drawAsciiArt(graphics = null) {
 
       const originalIndex = getActiveFrameIndex();
       saveActiveFrame();
+      const savedImg = window.img;
+      const savedColors = gridCellColors;
+
+      preExtractAllColors();
 
       const imgWidth = parseInt(document.getElementById('export-width').value, 10) || 900;
       const imgHeight = Math.round(imgWidth / (p.width / p.height));
@@ -732,6 +777,10 @@ function drawAsciiArt(graphics = null) {
 
       for (let i = 0; i < allFrames.length; i++) {
         applyState(allFrames[i].state);
+
+        // swap per-frame image/colors for video mode
+        if (allFrames[i].image) window.img = allFrames[i].image;
+        if (allFrames[i].gridCellColors) gridCellColors = allFrames[i].gridCellColors;
 
         // recompute derived density field
         window.density = window.baseDensity
@@ -766,6 +815,8 @@ function drawAsciiArt(graphics = null) {
       gif.finish();
 
       // restore original frame
+      window.img = savedImg;
+      gridCellColors = savedColors;
       applyState(allFrames[originalIndex].state);
       window.density = window.baseDensity
         + '0'.repeat(Math.max(0, window.zeroCount))
@@ -939,6 +990,16 @@ function drawAsciiArt(graphics = null) {
     gridCellColors = e.data;
     window.useImageColors = true;
     window.isExtractingColors = false;
+
+    // cache on the active frame when in video mode
+    if (isVideoMode()) {
+      const frames = getFrames();
+      const idx = getActiveFrameIndex();
+      if (frames[idx]?.image) {
+        frames[idx].gridCellColors = gridCellColors;
+      }
+    }
+
     window.updateSketch();
   };
 }

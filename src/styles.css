@@ -445,3 +445,10 @@ button:hover {
     border-bottom: 1px solid #4CAF50;
     padding-bottom: 4px;
 }
+
+/* ---------- Video Progress ---------- */
+#video-progress {
+    color: #4CAF50;
+    font-size: 13px;
+    padding: 4px 0;
+}
