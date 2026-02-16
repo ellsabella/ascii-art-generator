@@ -49,6 +49,28 @@ body {
     flex-shrink: 0;
 }
 
+#play-pause-btn {
+    width: 60px;
+    height: 60px;
+    flex-shrink: 0;
+    font-size: 28px;
+    line-height: 1;
+    background: #333;
+    color: #4CAF50;
+    border: 2px solid #555;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+#play-pause-btn:hover {
+    background: #444;
+    border-color: #4CAF50;
+}
+
 #frame-thumbnails {
     display: flex;
     gap: 10px;
@@ -179,6 +201,21 @@ body {
 
 #mirror-frames-btn:hover {
     background: #1976D2;
+}
+
+#lerp-locked-btn {
+    width: auto;
+    padding: 6px 14px;
+    background: #9C27B0;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#lerp-locked-btn:hover {
+    background: #7B1FA2;
 }
 
 .timeline-checkbox {

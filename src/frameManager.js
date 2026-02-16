@@ -70,6 +70,9 @@ function saveActiveFrame() {
 function switchToFrame(index) {
   if (index < 0 || index >= frames.length || index === activeFrameIndex) return;
 
+  // manual frame switch stops playback
+  if (isPlaying) stopPlayback();
+
   // persist outgoing frame
   saveActiveFrame();
 
@@ -274,6 +277,12 @@ function renderTimeline() {
       mirrorBtn.style.background = '';
     }
   }
+
+  // show/hide LERP button based on locked frame conditions
+  const lerpBtn = document.getElementById('lerp-locked-btn');
+  if (lerpBtn) {
+    lerpBtn.style.display = canLerpBetweenLocked() ? 'inline-block' : 'none';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +379,155 @@ function removeMirrorFrames(originalCount) {
 }
 
 // ---------------------------------------------------------------------------
+// LERP between locked frames
+// ---------------------------------------------------------------------------
+
+// Keys that are strings or booleans — switch at midpoint instead of lerping
+const DISCRETE_KEYS = new Set([
+  'baseDensity', 'density', 'advancedBgMode',
+  'shadowMode', 'shadowColorMode',
+  'LERP', 'shadowSymmetric',
+]);
+
+// Keys that must be rounded to integers after lerp
+const INTEGER_KEYS = new Set([
+  'colorCount', 'zeroCount', 'spaceCount',
+]);
+
+function canLerpBetweenLocked() {
+  const lockedIndices = [];
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].locked) lockedIndices.push(i);
+  }
+  if (lockedIndices.length < 2) return false;
+  for (let k = 0; k < lockedIndices.length - 1; k++) {
+    if (lockedIndices[k + 1] - lockedIndices[k] > 1) return true;
+  }
+  return false;
+}
+
+function lerpBetweenLocked() {
+  saveActiveFrame();
+
+  const lockedIndices = [];
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].locked) lockedIndices.push(i);
+  }
+  if (lockedIndices.length < 2) return;
+
+  for (let k = 0; k < lockedIndices.length - 1; k++) {
+    const idxA = lockedIndices[k];
+    const idxB = lockedIndices[k + 1];
+    const stateA = frames[idxA].state;
+    const stateB = frames[idxB].state;
+    const span = idxB - idxA;
+
+    for (let i = idxA + 1; i < idxB; i++) {
+      if (frames[i].locked) continue;
+
+      const t = (i - idxA) / span;
+      const interpolated = {};
+
+      for (const key of FRAME_STATE_KEYS) {
+        if (key === 'density') continue; // derived, recompute below
+
+        const valA = stateA[key];
+        const valB = stateB[key];
+
+        if (DISCRETE_KEYS.has(key)) {
+          interpolated[key] = t < 0.5 ? valA : valB;
+        } else if (Array.isArray(valA) && Array.isArray(valB)) {
+          interpolated[key] = valA.map((a, idx) => {
+            const b = valB[idx] ?? a;
+            return a + (b - a) * t;
+          });
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+          let v = valA + (valB - valA) * t;
+          if (INTEGER_KEYS.has(key)) v = Math.round(v);
+          interpolated[key] = v;
+        } else {
+          interpolated[key] = Array.isArray(valA) ? [...valA] : valA;
+        }
+      }
+
+      // recompute derived density
+      interpolated.density = (interpolated.baseDensity || '')
+        + '0'.repeat(Math.max(0, interpolated.zeroCount || 0))
+        + ' '.repeat(Math.max(0, interpolated.spaceCount || 0));
+
+      frames[i].state = interpolated;
+      frames[i].thumbnailDataURL = null;
+    }
+  }
+
+  // re-apply active frame (it may have been interpolated)
+  applyState(frames[activeFrameIndex].state);
+  if (typeof window.syncUIFromState === 'function') window.syncUIFromState();
+  if (typeof window.updateDensity === 'function') window.updateDensity();
+  else if (typeof window.updateSketch === 'function') window.updateSketch();
+
+  renderTimeline();
+}
+
+// ---------------------------------------------------------------------------
+// Playback (play / pause)
+// ---------------------------------------------------------------------------
+
+let playbackInterval = null;
+let isPlaying = false;
+
+function getPlaybackDelay() {
+  const el = document.getElementById('gif-delay');
+  return el ? Math.max(20, parseInt(el.value, 10) || 200) : 200;
+}
+
+function startPlayback() {
+  if (frames.length <= 1) return;
+  if (isPlaying) return;
+
+  isPlaying = true;
+  saveActiveFrame();
+  updatePlayPauseButton();
+
+  const tick = () => {
+    const next = (activeFrameIndex + 1) % frames.length;
+    // lightweight switch — skip propagation
+    activeFrameIndex = next;
+    applyState(frames[next].state);
+    if (typeof window.syncUIFromState === 'function') window.syncUIFromState();
+    if (typeof window.updateSketch === 'function') window.updateSketch();
+    renderTimeline();
+  };
+
+  tick(); // advance immediately on first press
+  playbackInterval = setInterval(tick, getPlaybackDelay());
+}
+
+function stopPlayback() {
+  if (!isPlaying) return;
+  isPlaying = false;
+  clearInterval(playbackInterval);
+  playbackInterval = null;
+  updatePlayPauseButton();
+}
+
+function togglePlayback() {
+  if (isPlaying) stopPlayback();
+  else startPlayback();
+}
+
+function isPlaybackActive() {
+  return isPlaying;
+}
+
+function updatePlayPauseButton() {
+  const btn = document.getElementById('play-pause-btn');
+  if (!btn) return;
+  btn.textContent = isPlaying ? '\u23F8' : '\u25B6';
+  btn.title = isPlaying ? 'Pause' : 'Play animation preview';
+}
+
+// ---------------------------------------------------------------------------
 // Getters
 // ---------------------------------------------------------------------------
 
@@ -411,4 +569,9 @@ export {
   removeMirrorFrames,
   isMirrored,
   toggleFrameLock,
+  canLerpBetweenLocked,
+  lerpBetweenLocked,
+  togglePlayback,
+  stopPlayback,
+  isPlaybackActive,
 };

@@ -14,10 +14,12 @@
     <div id="main-area">
       <div id="canvas-container"></div>
       <div id="frame-timeline">
+        <button id="play-pause-btn" title="Play / Pause animation preview">&#9654;</button>
         <div id="frame-thumbnails"></div>
         <div id="frame-actions">
           <button id="add-frame-btn" title="Add Frame">+ Add Frame</button>
           <button id="mirror-frames-btn" title="Add mirror frames for seamless loop">Mirror Loop</button>
+          <button id="lerp-locked-btn" title="Interpolate unlocked frames between locked frames" style="display:none;">LERP Locked</button>
           <label class="timeline-checkbox">
             <input type="checkbox" id="propagate-toggle" checked>
             <span>Propagate changes</span>

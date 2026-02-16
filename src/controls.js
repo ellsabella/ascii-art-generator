@@ -1,6 +1,6 @@
 
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
-import { addFrame, initFrames, setPropagateEnabled, addMirrorFrames, removeMirrorFrames, isMirrored } from "./frameManager.js";
+import { addFrame, initFrames, setPropagateEnabled, addMirrorFrames, removeMirrorFrames, isMirrored, lerpBetweenLocked, togglePlayback } from "./frameManager.js";
 
 export const DEFAULTS = {
   // image/colors
@@ -1072,6 +1072,20 @@ function setupFrameControls() {
   if (propagateToggle) {
     propagateToggle.addEventListener('change', (e) => {
       setPropagateEnabled(e.target.checked);
+    });
+  }
+
+  // Play/pause button
+  const playPauseBtn = document.getElementById('play-pause-btn');
+  if (playPauseBtn) {
+    playPauseBtn.addEventListener('click', () => togglePlayback());
+  }
+
+  // LERP between locked frames button
+  const lerpLockedBtn = document.getElementById('lerp-locked-btn');
+  if (lerpLockedBtn) {
+    lerpLockedBtn.addEventListener('click', () => {
+      lerpBetweenLocked();
     });
   }
 
