@@ -4,6 +4,8 @@ import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
 import { updateColorMap, kMeansColorClustering, hslToRgb, rgbToHsl } from "./colorUtils.js";
 import { applyHslOffsetToRgb, clamp } from "./colorUtils.js";
+import { initFrames, updateActiveThumbnail, getFrames, getActiveFrameIndex, saveActiveFrame, applyState, propagateToSubsequent } from "./frameManager.js";
+import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
 let p5Instance;
 let animationFrameId = null;
@@ -102,8 +104,20 @@ function createSketch(p) {
         } else {
           console.log("drawAsciiArt function not found");
         }
-        
+
         p.redraw();
+
+        // propagate current settings to subsequent frames (if enabled)
+        propagateToSubsequent();
+
+        // capture thumbnail for the active frame (debounced)
+        if (window._thumbTimeout) clearTimeout(window._thumbTimeout);
+        window._thumbTimeout = setTimeout(() => {
+          if (typeof window.generateThumbnail === 'function') {
+            const thumb = window.generateThumbnail(140);
+            if (thumb) updateActiveThumbnail(thumb);
+          }
+        }, 300);
       } catch (error) {
         console.error("Error in updateSketch:", error);
       }
@@ -188,6 +202,7 @@ function createSketch(p) {
 
     initializeControls(p);
     window.updateSketch();
+    initFrames();
   }
 
   p.windowResized = function () {
@@ -202,8 +217,9 @@ function createSketch(p) {
   };
 
   function setCanvasSize() {
-    const w = p.windowWidth - 300;
-    const h = p.windowHeight;
+    const w = p.windowWidth - 420;
+    const timelineHeight = document.getElementById('frame-timeline')?.offsetHeight || 100;
+    const h = p.windowHeight - timelineHeight;
     windowAR = w / h;
     if (window.img) {
       ar = window.img.width / window.img.height;
@@ -550,43 +566,234 @@ function drawAsciiArt(graphics = null) {
     window.updateSketch();
   };
 
-  window.downloadPNG = function () {
+  // Helper: export a canvas element as a blob download
+  function downloadCanvasAsFile(canvasEl, filename, format, quality) {
+    const mimeType = format === 'webp' ? 'image/webp' : 'image/png';
+    const qualityArg = format === 'webp' ? quality : undefined;
+
+    canvasEl.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, mimeType, qualityArg);
+  }
+
+  window.downloadImage = function () {
     if (isDownloading) {
       console.log("Download already in progress");
       return;
     }
 
     isDownloading = true;
-    const downloadButton = document.getElementById("download-png");
-    if (downloadButton) {
-      downloadButton.disabled = true;
-    }
+    const downloadButton = document.getElementById("download-image");
+    if (downloadButton) downloadButton.disabled = true;
 
-    console.log("Downloading PNG...");
+    const format = window.exportFormat || 'png';
+    const quality = window.webpQuality || 0.8;
+    const ext = format === 'webp' ? 'webp' : 'png';
 
-    const pngWidth = parseInt(document.getElementById("png-width").value, 10);
-    if (isNaN(pngWidth) || pngWidth <= 0) {
+    console.log(`Downloading ${ext.toUpperCase()}...`);
+
+    const imgWidth = parseInt(document.getElementById("export-width").value, 10);
+    if (isNaN(imgWidth) || imgWidth <= 0) {
       isDownloading = false;
-      if (downloadButton) {
-        downloadButton.disabled = false;
-      }
+      if (downloadButton) downloadButton.disabled = false;
       return;
     }
-    const pngHeight = Math.round(pngWidth / (p.width / p.height));
-    const offscreenBuffer = p.createGraphics(pngWidth, pngHeight);
+    const imgHeight = Math.round(imgWidth / (p.width / p.height));
+    const offscreenBuffer = p.createGraphics(imgWidth, imgHeight);
 
     drawAsciiArt(offscreenBuffer);
     const safeName = window.density.replace(/\s+/g, "_").slice(0, 50);
-    p.saveCanvas(offscreenBuffer, safeName, "png");
+    downloadCanvasAsFile(offscreenBuffer.elt, `${safeName}.${ext}`, format, quality);
     offscreenBuffer.remove();
 
     setTimeout(() => {
       isDownloading = false;
-      if (downloadButton) {
-        downloadButton.disabled = false;
-      }
+      if (downloadButton) downloadButton.disabled = false;
       console.log("Download process completed");
     }, 1000);
+  };
+
+  window.generateThumbnail = function (width = 140) {
+    if (!window.img) return null;
+    const height = Math.round(width * (p.height / p.width));
+    const thumbBuffer = p.createGraphics(width, height);
+    drawAsciiArt(thumbBuffer);
+    const dataURL = thumbBuffer.elt.toDataURL('image/png');
+    thumbBuffer.remove();
+    return dataURL;
+  };
+
+  window.downloadAllFrames = async function () {
+    if (isDownloading) return;
+    isDownloading = true;
+
+    const downloadBtn = document.getElementById('download-all-frames');
+    if (downloadBtn) downloadBtn.disabled = true;
+
+    try {
+      const allFrames = getFrames();
+      const originalIndex = getActiveFrameIndex();
+      saveActiveFrame();
+
+      const format = window.exportFormat || 'png';
+      const quality = window.webpQuality || 0.8;
+      const ext = format === 'webp' ? 'webp' : 'png';
+      const mimeType = format === 'webp' ? 'image/webp' : 'image/png';
+
+      const imgWidth = parseInt(document.getElementById('export-width').value, 10) || 900;
+      const imgHeight = Math.round(imgWidth / (p.width / p.height));
+
+      const zip = new JSZip();
+
+      for (let i = 0; i < allFrames.length; i++) {
+        applyState(allFrames[i].state);
+
+        // recompute derived density field
+        window.density = window.baseDensity
+          + '0'.repeat(Math.max(0, window.zeroCount))
+          + ' '.repeat(Math.max(0, window.spaceCount));
+
+        // update color map for non-image-color modes
+        if (!window.useImageColors) {
+          colorMap = updateColorMap(p, window);
+        }
+
+        const buffer = p.createGraphics(imgWidth, imgHeight);
+        drawAsciiArt(buffer);
+
+        // Use toBlob with format + quality, then convert to base64 for JSZip
+        const blob = await new Promise((resolve) => {
+          buffer.elt.toBlob(resolve, mimeType, format === 'webp' ? quality : undefined);
+        });
+        const arrayBuffer = await blob.arrayBuffer();
+        zip.file(`frame_${i + 1}.${ext}`, arrayBuffer);
+        buffer.remove();
+      }
+
+      // restore original frame
+      applyState(allFrames[originalIndex].state);
+      window.density = window.baseDensity
+        + '0'.repeat(Math.max(0, window.zeroCount))
+        + ' '.repeat(Math.max(0, window.spaceCount));
+      if (!window.useImageColors) {
+        colorMap = updateColorMap(p, window);
+      }
+      window.updateSketch();
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ascii-frames.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      console.log('All frames downloaded as ZIP');
+    } catch (error) {
+      console.error('Error downloading frames:', error);
+    } finally {
+      isDownloading = false;
+      if (downloadBtn) downloadBtn.disabled = false;
+    }
+  };
+
+  window.downloadGIF = async function () {
+    if (isDownloading) return;
+    isDownloading = true;
+
+    const downloadBtn = document.getElementById('download-gif');
+    if (downloadBtn) downloadBtn.disabled = true;
+
+    try {
+      const allFrames = getFrames();
+      if (allFrames.length < 2) {
+        console.warn('Need at least 2 frames to create a GIF');
+        return;
+      }
+
+      const originalIndex = getActiveFrameIndex();
+      saveActiveFrame();
+
+      const imgWidth = parseInt(document.getElementById('export-width').value, 10) || 900;
+      const imgHeight = Math.round(imgWidth / (p.width / p.height));
+      const delay = parseInt(document.getElementById('gif-delay-value').value, 10) || 200;
+
+      const gif = GIFEncoder();
+
+      for (let i = 0; i < allFrames.length; i++) {
+        applyState(allFrames[i].state);
+
+        // recompute derived density field
+        window.density = window.baseDensity
+          + '0'.repeat(Math.max(0, window.zeroCount))
+          + ' '.repeat(Math.max(0, window.spaceCount));
+
+        if (!window.useImageColors) {
+          colorMap = updateColorMap(p, window);
+        }
+
+        const buffer = p.createGraphics(imgWidth, imgHeight);
+        drawAsciiArt(buffer);
+
+        // get RGBA pixel data from the canvas
+        const ctx = buffer.elt.getContext('2d');
+        const imageData = ctx.getImageData(0, 0, imgWidth, imgHeight);
+        const rgba = imageData.data;
+
+        // quantize to 256-color palette and create indexed bitmap
+        const palette = quantize(rgba, 256, { format: 'rgb444' });
+        const indexed = applyPalette(rgba, palette, 'rgb444');
+
+        gif.writeFrame(indexed, imgWidth, imgHeight, {
+          palette,
+          delay,
+          repeat: 0, // loop forever
+        });
+
+        buffer.remove();
+      }
+
+      gif.finish();
+
+      // restore original frame
+      applyState(allFrames[originalIndex].state);
+      window.density = window.baseDensity
+        + '0'.repeat(Math.max(0, window.zeroCount))
+        + ' '.repeat(Math.max(0, window.spaceCount));
+      if (!window.useImageColors) {
+        colorMap = updateColorMap(p, window);
+      }
+      window.updateSketch();
+
+      // download the GIF
+      const output = gif.bytes();
+      const blob = new Blob([output], { type: 'image/gif' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ascii-animation.gif';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      console.log('GIF downloaded');
+    } catch (error) {
+      console.error('Error creating GIF:', error);
+    } finally {
+      isDownloading = false;
+      if (downloadBtn) downloadBtn.disabled = false;
+    }
   };
 
   window.createAndDownloadSVG = async function () {

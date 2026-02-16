@@ -1,7 +1,8 @@
 
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
+import { addFrame, initFrames, setPropagateEnabled, addMirrorFrames, removeMirrorFrames, isMirrored } from "./frameManager.js";
 
-const DEFAULTS = {
+export const DEFAULTS = {
   // image/colors
   useImageColors: true,
   colorCount: 2,
@@ -95,7 +96,7 @@ export function initializeControls(p5Instance) {
   setupSpaceSlider();
 
   setupColumnsInput();
-  setupDownloadPNG();
+  setupExportControls();
 
   setupColorExtractionToggle();
 
@@ -103,6 +104,9 @@ export function initializeControls(p5Instance) {
   setupColorCountRadios();
   setupShadowControls();
   setupImageGlyphControls();
+  setupFrameControls();
+
+  window.syncUIFromState = syncUIFromState;
 
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios && lerpRadios.length) {
@@ -409,15 +413,44 @@ function setupColumnsInput() {
   }
 }
 
-function setupDownloadPNG() {
-  const downloadPngButton = document.getElementById("download-png");
-  if (downloadPngButton) {
-    downloadPngButton.addEventListener("click", function (event) {
-      event.preventDefault();
-      if (typeof window.downloadPNG === "function") {
-        window.downloadPNG();
-      } else {
-        console.error("downloadPNG function not found");
+function setupExportControls() {
+  // Format radios — show/hide WEBP quality slider
+  const formatRadios = document.querySelectorAll('input[name="export-format"]');
+  const webpQualityGroup = document.getElementById('webp-quality-group');
+
+  window.exportFormat = 'png';
+  window.webpQuality = 0.8;
+
+  formatRadios.forEach((r) => {
+    r.addEventListener('change', (e) => {
+      window.exportFormat = e.target.value;
+      if (webpQualityGroup) {
+        webpQualityGroup.style.display = e.target.value === 'webp' ? 'block' : 'none';
+      }
+    });
+  });
+
+  // WEBP quality slider + number sync
+  const qualitySlider = document.getElementById('webp-quality');
+  const qualityNumber = document.getElementById('webp-quality-value');
+  if (qualitySlider && qualityNumber) {
+    const updateQuality = (val) => {
+      const clamped = Math.max(1, Math.min(100, parseInt(val, 10) || 80));
+      window.webpQuality = clamped / 100;
+      qualitySlider.value = clamped;
+      qualityNumber.value = clamped;
+    };
+    qualitySlider.addEventListener('input', (e) => updateQuality(e.target.value));
+    qualityNumber.addEventListener('change', (e) => updateQuality(e.target.value));
+  }
+
+  // Download single image button
+  const downloadBtn = document.getElementById('download-image');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.downloadImage === 'function') {
+        window.downloadImage();
       }
     });
   }
@@ -995,6 +1028,78 @@ function setupShadowControls() {
   refreshShadowVisibility();
 }
 
+let frameControlsBound = false;
+function setupFrameControls() {
+  if (frameControlsBound) return;
+  frameControlsBound = true;
+
+  const addFrameBtn = document.getElementById('add-frame-btn');
+  if (addFrameBtn) {
+    addFrameBtn.addEventListener('click', () => addFrame());
+  }
+
+  const downloadAllBtn = document.getElementById('download-all-frames');
+  if (downloadAllBtn) {
+    downloadAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.downloadAllFrames === 'function') {
+        window.downloadAllFrames();
+      }
+    });
+  }
+
+  // GIF delay slider sync
+  const gifDelaySlider = document.getElementById('gif-delay');
+  const gifDelayNumber = document.getElementById('gif-delay-value');
+  if (gifDelaySlider && gifDelayNumber) {
+    gifDelaySlider.addEventListener('input', (e) => { gifDelayNumber.value = e.target.value; });
+    gifDelayNumber.addEventListener('change', (e) => { gifDelaySlider.value = e.target.value; });
+  }
+
+  // Download GIF button
+  const downloadGifBtn = document.getElementById('download-gif');
+  if (downloadGifBtn) {
+    downloadGifBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.downloadGIF === 'function') {
+        window.downloadGIF();
+      }
+    });
+  }
+
+  // Propagate checkbox
+  const propagateToggle = document.getElementById('propagate-toggle');
+  if (propagateToggle) {
+    propagateToggle.addEventListener('change', (e) => {
+      setPropagateEnabled(e.target.checked);
+    });
+  }
+
+  // Mirror frames button (toggle: add / remove)
+  const mirrorBtn = document.getElementById('mirror-frames-btn');
+  if (mirrorBtn) {
+    mirrorBtn.addEventListener('click', () => {
+      if (isMirrored()) {
+        removeMirrorFrames();
+        mirrorBtn.textContent = 'Mirror Loop';
+        mirrorBtn.style.background = '';
+      } else {
+        const result = addMirrorFrames();
+        if (result === 'need_3_frames') {
+          mirrorBtn.textContent = 'Need 3+ frames';
+          mirrorBtn.style.background = '#999';
+          setTimeout(() => {
+            mirrorBtn.textContent = 'Mirror Loop';
+            mirrorBtn.style.background = '';
+          }, 1500);
+        } else if (isMirrored()) {
+          mirrorBtn.textContent = 'Remove Mirrors';
+          mirrorBtn.style.background = '#f44336';
+        }
+      }
+    });
+  }
+}
 
 function resetAllSettings() {
   // 1) Reset state
@@ -1024,10 +1129,13 @@ function resetAllSettings() {
     window.updateSketch?.();
   }
 
+  // 6) Reset frames to a single frame with default settings
+  initFrames();
+
   console.log("All settings have been reset to default values.");
 }
 
-function syncUIFromState() {
+export function syncUIFromState() {
   // -------------------------
   // helpers
   // -------------------------
