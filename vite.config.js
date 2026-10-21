@@ -8,6 +8,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: "index.html",
+        characters: "characters.html",
       },
     },
     assetsDir: "assets",

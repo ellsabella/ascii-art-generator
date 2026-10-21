@@ -1,5 +1,11 @@
 
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl } from "./colorUtils.js";
+import { PALETTE_PRESETS, getPreset } from "./palettes.js";
+import { hexToRgbArr, rgbArrToHex, resamplePalette, mergeWithLocks } from "./paletteUtils.js";
+import {
+  MAX_LAYERS, initLayers, getLayerCount, getActiveLayer, getLayerState, isLayerVisible,
+  setActiveLayer, setLayerVisible, setLayerCount, snapshotWindow, applySnapshot,
+} from "./layers.js";
 
 const DEFAULTS = {
   // image/colors
@@ -11,7 +17,6 @@ const DEFAULTS = {
   imageGlyphHueOffset: 0,     // degrees -180..180
   imageGlyphSatOffset: 0,     // -100..100
   imageGlyphLightOffset: 0,   // -100..100
-  imageGlyphAlpha: 1,          // 0..1
 
   // density
   baseDensity: "RBGHZ",
@@ -67,8 +72,21 @@ const DEFAULTS = {
   shadow1RGB: [255, 0, 80],
   shadow1A: 0.6,
   shadow2RGB: [0, 200, 255],
-  shadow2A: 0.6
+  shadow2A: 0.6,
+
+  // per-layer opacity (0..1)
+  layerGlyphAlpha: 1,
+  layerBgAlpha: 1,
+
+  // palette constraint
+  paletteEnabled: false,
+  paletteSize: 6,             // 1..16
+  paletteSource: "image",     // "image" (k-means) | preset key from palettes.js
+  paletteMapping: "nearest"   // "nearest" | "brightness" (image-colour mode only)
 };
+
+const PALETTE_MIN = 1;
+const PALETTE_MAX = 32;
 
 function debounce(func, delay) {
   let timeout;
@@ -103,6 +121,7 @@ export function initializeControls(p5Instance) {
   setupColorCountRadios();
   setupShadowControls();
   setupImageGlyphControls();
+  setupPaletteControls();
 
   const lerpRadios = document.querySelectorAll('input[name="lerp"]');
   if (lerpRadios && lerpRadios.length) {
@@ -119,6 +138,10 @@ export function initializeControls(p5Instance) {
   // ---------------------------------------------------------------------------
   applyDefaultsToState();
   syncUIFromState();
+
+  // Layer 1 is whatever the defaults produced; further layers are added by the user
+  initLayers();
+  setupLayerControls();
 
   // Ensure correct show/hide after defaults are applied
   if (typeof toggleColorControls === "function") toggleColorControls();
@@ -261,6 +284,7 @@ function setupBackgroundControls() {
       radio.addEventListener("change", (e) => {
         window.advancedBgMode = e.target.value; // off | colorPicker | hslOffset
         setStyleUI(window.advancedBgMode);
+        refreshLayerOpacityUI();
         window.updateSketch?.();
       });
     });
@@ -483,14 +507,8 @@ function setupImageGlyphControls() {
   if (typeof window.imageGlyphHueOffset !== "number") window.imageGlyphHueOffset = 0;
   if (typeof window.imageGlyphSatOffset !== "number") window.imageGlyphSatOffset = 0;
   if (typeof window.imageGlyphLightOffset !== "number") window.imageGlyphLightOffset = 0;
-  if (typeof window.imageGlyphAlpha !== "number") window.imageGlyphAlpha = 1;
 
-  // alpha 0..1
-  syncSliderPair("image-glyph-alpha", "image-glyph-alpha-value", (v) => {
-    window.imageGlyphAlpha = clamp(v, 0, 1);
-  }, { min: 0, max: 1 });
-
-  // H/S/L
+  // H/S/L (glyph opacity is the per-layer "Chars" slider under the layer tabs)
   syncSliderPair("image-glyph-h", "image-glyph-h-value", (v) => {
     window.imageGlyphHueOffset = v;
   }, { min: -180, max: 180 });
@@ -506,21 +524,28 @@ function setupImageGlyphControls() {
 
 function toggleColorControls() {
   const useImageColors = !!window.useImageColors;
+  const paletteOn = !!window.paletteEnabled;
+
+  // Manual pickers and 1/2/3 count are replaced by the palette when it is on
+  const hideManual = useImageColors || paletteOn;
 
   const pickerWrap = document.getElementById("char-color-pickers");
-  if (pickerWrap) pickerWrap.style.display = useImageColors ? "none" : "block";
+  if (pickerWrap) pickerWrap.style.display = hideManual ? "none" : "block";
 
   const colorCountGroup = document.getElementById("color-count-group");
-  if (colorCountGroup) colorCountGroup.style.display = useImageColors ? "none" : "block";
+  if (colorCountGroup) colorCountGroup.style.display = hideManual ? "none" : "block";
 
+  // LERP would blend between palette stops, adding out-of-palette colours
   const lerpControl = document.getElementById("lerp-control");
-  if (lerpControl) lerpControl.style.display = useImageColors ? "none" : "block";
+  if (lerpControl) lerpControl.style.display = hideManual ? "none" : "block";
 
   const msg = document.getElementById("color-extraction-message");
   if (msg) msg.style.display = useImageColors ? "block" : "none";
 
   const imageGlyphControls = document.getElementById("image-glyph-controls");
   if (imageGlyphControls) imageGlyphControls.style.display = useImageColors ? "block" : "none";
+
+  refreshPaletteVisibility();
 
   if (!useImageColors) updateCharPickerVisibility();
 }
@@ -548,6 +573,14 @@ export function loadNewImage(source, p5Instance, isDefault = false, callback = n
         window.initializeSketch();
       } else {
         console.warn("initializeSketch function not found. Sketch may not update correctly.");
+      }
+
+      // New image: every layer's cached cell colours are stale
+      window.invalidateCellColors?.();
+
+      // New image: refresh an image-derived palette (locked swatches survive)
+      if (window.paletteEnabled && window.paletteSource === "image") {
+        requestPaletteExtraction();
       }
 
       if (window.useImageColors) {
@@ -642,6 +675,15 @@ function updateCharPickerVisibility() {
     return;
   }
 
+  // Palette replaces the manual pickers and LERP (stepped mapping only)
+  if (window.paletteEnabled) {
+    start.style.display = "none";
+    mid.style.display = "none";
+    end.style.display = "none";
+    if (lerpControl) lerpControl.style.display = "none";
+    return;
+  }
+
   // Otherwise: normal behaviour
   start.style.display = "block";
 
@@ -699,7 +741,6 @@ function applyDefaultsToState() {
   window.imageGlyphHueOffset = Number(DEFAULTS.imageGlyphHueOffset ?? 0);
   window.imageGlyphSatOffset = Number(DEFAULTS.imageGlyphSatOffset ?? 0);
   window.imageGlyphLightOffset = Number(DEFAULTS.imageGlyphLightOffset ?? 0);
-  window.imageGlyphAlpha = Number(DEFAULTS.imageGlyphAlpha ?? 1);
 
   // ---- Density
   window.baseDensity = String(DEFAULTS.baseDensity ?? "");
@@ -762,6 +803,17 @@ function applyDefaultsToState() {
   window.shadow1A = Number(DEFAULTS.shadow1A ?? 0.6);
   window.shadow2RGB = Array.isArray(DEFAULTS.shadow2RGB) ? [...DEFAULTS.shadow2RGB] : [0, 200, 255];
   window.shadow2A = Number(DEFAULTS.shadow2A ?? 0.6);
+
+  // ---- Layer opacity
+  window.layerGlyphAlpha = Number(DEFAULTS.layerGlyphAlpha ?? 1);
+  window.layerBgAlpha = Number(DEFAULTS.layerBgAlpha ?? 1);
+
+  // ---- Palette constraint
+  window.paletteEnabled = !!DEFAULTS.paletteEnabled;
+  window.paletteSize = clampPaletteSize(DEFAULTS.paletteSize);
+  window.paletteSource = String(DEFAULTS.paletteSource ?? "image");
+  window.paletteMapping = String(DEFAULTS.paletteMapping ?? "nearest");
+  window.palette = []; // [{ rgb:[r,g,b], locked:boolean }]
 }
 
 function setupColorCountRadios() {
@@ -996,8 +1048,121 @@ function setupShadowControls() {
 }
 
 
+// =============================================================================
+// Layers
+// =============================================================================
+
+/**
+ * Settings for a brand-new layer: the defaults, except that the per-cell
+ * background is off so the layers beneath show through. Globals (flat
+ * background, PNG width) are left untouched.
+ */
+function freshLayerState() {
+  const live = snapshotWindow();
+  const globals = { bgColorRGB: window.bgColorRGB, bgAlpha: window.bgAlpha, printRes: window.printRes };
+  applyDefaultsToState();
+  window.advancedBgMode = "off";
+  const fresh = snapshotWindow();
+  applySnapshot(live);
+  Object.assign(window, globals);
+  return fresh;
+}
+
+/**
+ * The Pixel BG opacity slider only has something to act on when the active
+ * layer draws per-cell backgrounds. Grey it out otherwise and say why.
+ */
+function refreshLayerOpacityUI() {
+  const hasPixelBg = window.advancedBgMode === "colorPicker" || window.advancedBgMode === "hslOffset";
+  const slider = document.getElementById("layer-bg-alpha");
+  const number = document.getElementById("layer-bg-alpha-value");
+  const hint = document.getElementById("layer-bg-alpha-hint");
+  if (slider) slider.disabled = !hasPixelBg;
+  if (number) number.disabled = !hasPixelBg;
+  if (hint) hint.style.display = hasPixelBg ? "none" : "block";
+}
+
+function setupLayerOpacityControls() {
+  const bind = (sliderId, numberId, prop) => {
+    const slider = document.getElementById(sliderId);
+    const number = document.getElementById(numberId);
+    if (!slider || !number) return;
+    const apply = (raw) => {
+      let v = Math.round(Number(raw));
+      if (!Number.isFinite(v)) v = 100;
+      v = Math.max(0, Math.min(100, v));
+      window[prop] = v / 100;
+      slider.value = v;
+      number.value = v;
+      window.updateSketch?.();
+    };
+    slider.addEventListener("input", (e) => apply(e.target.value));
+    number.addEventListener("change", (e) => apply(e.target.value));
+  };
+  bind("layer-glyph-alpha", "layer-glyph-alpha-value", "layerGlyphAlpha");
+  bind("layer-bg-alpha", "layer-bg-alpha-value", "layerBgAlpha");
+}
+
+function setupLayerControls() {
+  setupLayerOpacityControls();
+  const countInput = document.getElementById("layer-count");
+  if (countInput) {
+    countInput.value = getLayerCount();
+    countInput.addEventListener("change", (e) => {
+      const n = setLayerCount(e.target.value, freshLayerState);
+      e.target.value = n;
+      renderLayerTabs();
+      syncUIFromState();
+      window.updateSketch?.();
+    });
+  }
+  renderLayerTabs();
+}
+
+function switchLayer(i) {
+  if (!setActiveLayer(i)) return;
+  window.isExtractingColors = false;
+  renderLayerTabs();
+  syncUIFromState();
+  window.updateSketch?.();
+}
+
+function renderLayerTabs() {
+  const bar = document.getElementById("layer-tabs");
+  if (!bar) return;
+  bar.innerHTML = "";
+
+  const count = getLayerCount();
+  const active = getActiveLayer();
+
+  for (let i = 0; i < count; i++) {
+    const tab = document.createElement("div");
+    tab.className = "layer-tab" + (i === active ? " is-active" : "") + (isLayerVisible(i) ? "" : " is-hidden-layer");
+    tab.dataset.layer = String(i);
+    tab.title = `Edit layer ${i + 1}`;
+
+    const eye = document.createElement("input");
+    eye.type = "checkbox";
+    eye.checked = isLayerVisible(i);
+    eye.title = "Show / hide this layer";
+    eye.addEventListener("click", (e) => e.stopPropagation());
+    eye.addEventListener("change", (e) => {
+      setLayerVisible(i, e.target.checked);
+      tab.classList.toggle("is-hidden-layer", !e.target.checked);
+      window.updateSketch?.();
+    });
+
+    const name = document.createElement("span");
+    name.textContent = `Layer ${i + 1}`;
+
+    tab.append(eye, name);
+    tab.addEventListener("click", () => switchLayer(i));
+    bar.appendChild(tab);
+  }
+}
+
 function resetAllSettings() {
-  // 1) Reset state
+  // 1) Reset state (the active layer, plus the global background)
   applyDefaultsToState();
 
   // 2) Clear any in-flight extraction state (safe)
@@ -1025,6 +1190,241 @@ function resetAllSettings() {
   }
 
   console.log("All settings have been reset to default values.");
+}
+
+// =============================================================================
+// Palette constraint
+// =============================================================================
+
+let paletteRequestId = 0;
+
+function clampPaletteSize(n) {
+  let v = Math.round(Number(n));
+  if (!Number.isFinite(v)) v = Number(DEFAULTS.paletteSize ?? 6);
+  return Math.max(PALETTE_MIN, Math.min(PALETTE_MAX, v));
+}
+
+function currentPaletteSwatches() {
+  return Array.isArray(window.palette) ? window.palette : [];
+}
+
+function setPaletteStatus(text) {
+  const el = document.getElementById("palette-status");
+  if (el) el.textContent = text || "";
+}
+
+function syncPaletteSizeUI() {
+  const slider = document.getElementById("palette-size");
+  const number = document.getElementById("palette-size-value");
+  if (slider) slider.value = window.paletteSize;
+  if (number) number.value = window.paletteSize;
+}
+
+/** Show/hide palette sub-controls based on state. Safe to call any time. */
+function refreshPaletteVisibility() {
+  const on = !!window.paletteEnabled;
+
+  const options = document.getElementById("palette-options");
+  if (options) options.style.display = on ? "flex" : "none";
+
+  // Nearest/brightness only means something when cells carry image colour
+  const mappingGroup = document.getElementById("palette-mapping-group");
+  if (mappingGroup) mappingGroup.style.display = window.useImageColors ? "block" : "none";
+
+  const extractBtn = document.getElementById("palette-extract");
+  if (extractBtn) extractBtn.style.display = window.paletteSource === "image" ? "block" : "none";
+}
+
+let paletteRequestLayer = 0;
+
+/** Ask main.js to run k-means on the current image (async, via worker). */
+function requestPaletteExtraction() {
+  if (!window.img || typeof window.extractPalette !== "function") return;
+  const n = clampPaletteSize(window.paletteSize);
+  paletteRequestId += 1;
+  paletteRequestLayer = getActiveLayer();
+  setPaletteStatus("Extracting palette from image…");
+  window.extractPalette(n, paletteRequestId);
+}
+
+/** Worker callback. Ignores results from superseded requests. */
+window.applyExtractedPalette = function (colors, requestId) {
+  if (requestId !== undefined && requestId !== paletteRequestId) return;
+  if (!Array.isArray(colors) || colors.length === 0) {
+    setPaletteStatus("Could not extract a palette from this image.");
+    return;
+  }
+
+  // The user may have switched tabs while the worker was busy: deliver the
+  // palette to the layer that asked for it.
+  const target = getLayerState(paletteRequestLayer);
+  if (target) {
+    const n = clampPaletteSize(target.paletteSize);
+    target.palette = mergeWithLocks(Array.isArray(target.palette) ? target.palette : [], colors, n);
+    window.updateSketch?.();
+    return;
+  }
+
+  const n = clampPaletteSize(window.paletteSize);
+  window.palette = mergeWithLocks(currentPaletteSwatches(), colors, n);
+  setPaletteStatus("");
+  renderPaletteSwatches();
+  window.updateSketch?.();
+};
+
+/** Rebuild window.palette from the current source at the current size. */
+function rebuildPalette() {
+  const n = clampPaletteSize(window.paletteSize);
+  window.paletteSize = n;
+
+  if (window.paletteSource === "image") {
+    requestPaletteExtraction();
+    return;
+  }
+
+  const preset = getPreset(window.paletteSource);
+  const base = preset ? preset.colors.map(hexToRgbArr) : [[0, 0, 0], [255, 255, 255]];
+  window.palette = mergeWithLocks(currentPaletteSwatches(), resamplePalette(base, n), n);
+  setPaletteStatus("");
+  renderPaletteSwatches();
+  window.updateSketch?.();
+}
+
+function renderPaletteSwatches() {
+  const wrap = document.getElementById("palette-swatches");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  currentPaletteSwatches().forEach((sw, i) => {
+    const row = document.createElement("div");
+    row.className = "palette-swatch" + (sw.locked ? " is-locked" : "");
+
+    const index = document.createElement("span");
+    index.className = "palette-swatch-index";
+    index.textContent = String(i + 1);
+
+    const hex = document.createElement("span");
+    hex.className = "palette-swatch-hex";
+    hex.textContent = rgbArrToHex(sw.rgb);
+
+    const lock = document.createElement("input");
+    lock.type = "checkbox";
+    lock.checked = !!sw.locked;
+    lock.addEventListener("change", (e) => {
+      if (!window.palette[i]) return;
+      window.palette[i].locked = !!e.target.checked;
+      row.classList.toggle("is-locked", !!e.target.checked);
+    });
+
+    const lockLabel = document.createElement("label");
+    lockLabel.className = "palette-swatch-lock";
+    lockLabel.append(lock, document.createTextNode("lock"));
+
+    const color = document.createElement("input");
+    color.type = "color";
+    color.value = rgbArrToHex(sw.rgb);
+    color.title = "Edit colour (locks this swatch)";
+    color.addEventListener("input", (e) => {
+      const rgb = hexToRgbArr(e.target.value);
+      window.palette[i] = { rgb, locked: true };
+      hex.textContent = e.target.value;
+      lock.checked = true;
+      row.classList.add("is-locked");
+      window.updateSketch?.();
+    });
+
+    row.append(index, color, hex, lockLabel);
+    wrap.appendChild(row);
+  });
+}
+
+function setupPaletteControls() {
+  const enabled = document.getElementById("palette-enabled");
+  const source = document.getElementById("palette-source");
+  const sizeSlider = document.getElementById("palette-size");
+  const sizeValue = document.getElementById("palette-size-value");
+  const mappingRadios = document.querySelectorAll('input[name="palette-mapping"]');
+  const extractBtn = document.getElementById("palette-extract");
+
+  // ---- Populate source dropdown
+  if (source) {
+    source.innerHTML = "";
+    const fromImage = document.createElement("option");
+    fromImage.value = "image";
+    fromImage.textContent = "From image (k-means)";
+    source.appendChild(fromImage);
+
+    PALETTE_PRESETS.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.key;
+      opt.textContent = `${p.name} (${p.colors.length})`;
+      source.appendChild(opt);
+    });
+  }
+
+  // ---- Enable toggle
+  if (enabled) {
+    enabled.addEventListener("change", (e) => {
+      window.paletteEnabled = !!e.target.checked;
+      toggleColorControls();
+      updateCharPickerVisibility();
+
+      if (window.paletteEnabled && currentPaletteSwatches().length === 0) {
+        rebuildPalette();
+      } else {
+        window.updateSketch?.();
+      }
+    });
+  }
+
+  // ---- Source dropdown
+  if (source) {
+    source.addEventListener("change", (e) => {
+      window.paletteSource = e.target.value;
+
+      // A new source is a fresh start: drop locks
+      window.palette = currentPaletteSwatches().map((s) => ({ rgb: s.rgb, locked: false }));
+
+      // Presets set the count to their natural size
+      const preset = getPreset(window.paletteSource);
+      if (preset) {
+        window.paletteSize = clampPaletteSize(preset.colors.length);
+        syncPaletteSizeUI();
+      }
+
+      refreshPaletteVisibility();
+      rebuildPalette();
+    });
+  }
+
+  // ---- Max colours (slider + number). UI mirrors instantly, rebuild is debounced.
+  const rebuildDebounced = debounce(() => {
+    if (window.paletteEnabled) rebuildPalette();
+  }, 200);
+
+  const applySize = (raw) => {
+    window.paletteSize = clampPaletteSize(raw);
+    syncPaletteSizeUI();
+    rebuildDebounced();
+  };
+
+  if (sizeSlider) sizeSlider.addEventListener("input", (e) => applySize(e.target.value));
+  if (sizeValue) sizeValue.addEventListener("change", (e) => applySize(e.target.value));
+
+  // ---- Mapping radios
+  mappingRadios.forEach((r) => {
+    r.addEventListener("change", (e) => {
+      window.paletteMapping = e.target.value; // nearest | brightness
+      window.updateSketch?.();
+    });
+  });
+
+  // ---- Manual re-extract
+  if (extractBtn) {
+    extractBtn.addEventListener("click", () => requestPaletteExtraction());
+  }
+
+  refreshPaletteVisibility();
 }
 
 function syncUIFromState() {
@@ -1114,11 +1514,6 @@ function syncUIFromState() {
   const imageGlyphControls = document.getElementById("image-glyph-controls");
   if (imageGlyphControls) imageGlyphControls.style.display = !!window.useImageColors ? "block" : "none";
 
-  if (typeof window.imageGlyphAlpha === "number") {
-    const v = clamp(window.imageGlyphAlpha, 0, 1);
-    syncPair("image-glyph-alpha", "image-glyph-alpha-value", v);
-  }
-
   if (typeof window.imageGlyphHueOffset === "number") {
     syncPair("image-glyph-h", "image-glyph-h-value", window.imageGlyphHueOffset);
   }
@@ -1180,6 +1575,8 @@ function syncUIFromState() {
     setValue("l-offset", window.lOffset);
     setValue("l-offset-value", window.lOffset);
   }
+
+  refreshLayerOpacityUI();
 
   // Background visibility rules
   const hslPanel = document.getElementById("advanced-bg-hsl-offset-controls");
@@ -1273,6 +1670,26 @@ function syncUIFromState() {
   // if (offset2Panel) offset2Panel.style.display = showSecond ? "block" : "none";
   if (offset2Panel) offset2Panel.style.display = (isDouble && !isSym) ? "block" : "none";
   if (offset2ColorPanel) offset2ColorPanel.style.display = (!isOff && cMode === "offset" && showSecond) ? "block" : "none";
+
+  // -------------------------
+  // Layer opacity
+  // -------------------------
+  if (typeof window.layerGlyphAlpha === "number") {
+    syncPair("layer-glyph-alpha", "layer-glyph-alpha-value", Math.round(clamp(window.layerGlyphAlpha, 0, 1) * 100));
+  }
+  if (typeof window.layerBgAlpha === "number") {
+    syncPair("layer-bg-alpha", "layer-bg-alpha-value", Math.round(clamp(window.layerBgAlpha, 0, 1) * 100));
+  }
+
+  // -------------------------
+  // Palette constraint
+  // -------------------------
+  setChecked("palette-enabled", !!window.paletteEnabled);
+  if (typeof window.paletteSource === "string") setValue("palette-source", window.paletteSource);
+  if (typeof window.paletteSize === "number") syncPair("palette-size", "palette-size-value", window.paletteSize);
+  if (typeof window.paletteMapping === "string") checkRadioByNameValue("palette-mapping", window.paletteMapping);
+  renderPaletteSwatches();
+  setPaletteStatus("");
 
   // -------------------------
   // Final: visibility based on state

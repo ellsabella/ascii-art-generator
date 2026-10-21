@@ -192,6 +192,132 @@ button:hover {
     font-style: italic;
 }
 
+/* ---------- Layer tabs ---------- */
+.layer-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #4CAF50;
+    margin: 4px 0 10px;
+}
+
+.layer-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #ddd;
+    border: 1px solid #bbb;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.layer-tab.is-active {
+    background: #4CAF50;
+    color: #fff;
+    border-color: #4CAF50;
+}
+
+.layer-tab.is-hidden-layer {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+
+.layer-tab input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+#layer-opacity-controls .slider-with-input {
+    margin: 2px 0;
+}
+
+#layer-opacity-controls .opacity-label {
+    width: 64px;
+    margin: 0;
+    font-size: 12px;
+}
+
+#layer-opacity-controls input:disabled {
+    opacity: 0.45;
+}
+
+/* ---------- Palette ---------- */
+#palette-source {
+    width: 100%;
+}
+
+#palette-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#palette-status {
+    font-size: 12px;
+    font-style: italic;
+    color: #555;
+    min-height: 1em;
+}
+
+.palette-swatches {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.palette-swatch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 6px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.palette-swatch.is-locked {
+    border-color: #4CAF50;
+}
+
+.palette-swatch-index {
+    width: 18px;
+    text-align: right;
+    color: #666;
+    font-size: 12px;
+}
+
+.palette-swatch input[type="color"] {
+    width: 44px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #999;
+    cursor: pointer;
+}
+
+.palette-swatch-hex {
+    flex: 1;
+    font-size: 12px;
+    color: #333;
+}
+
+.palette-swatch-lock {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.hint {
+    font-size: 12px;
+    color: #666;
+    margin: 4px 0 0;
+}
+
 /* ---------- Utility ---------- */
 .is-hidden {
     display: none !important;

@@ -1,17 +1,43 @@
 import p5 from "p5";
+import { sortByLightness } from "./paletteUtils.js";
+
+/**
+ * The palette currently constraining output, as [r,g,b] arrays, or null when
+ * the constraint is off or the palette is empty.
+ */
+export function getActivePaletteRgb(win) {
+    if (!win.paletteEnabled) return null;
+    const swatches = Array.isArray(win.palette) ? win.palette : [];
+    const rgbs = swatches
+      .map((s) => (s && Array.isArray(s.rgb) && s.rgb.length >= 3 ? s.rgb : null))
+      .filter(Boolean);
+    return rgbs.length ? rgbs : null;
+}
 
 export function updateColorMap(p, window) {
     const colorMap = new Map();
     const densityWithoutSpaces = window.density.replace(/\s/g, '');
     const totalChars = densityWithoutSpaces.length;
-  
+
+    // Manual mode with a constrained palette: spread the palette across the
+    // character ramp. Index 0 of the ramp is the brightest cell, so order the
+    // palette light -> dark, in steps. No LERP here: blended stops would add
+    // colours outside the palette.
+    const palette = getActivePaletteRgb(window);
+    const paletteLightToDark = palette ? sortByLightness(palette).reverse() : null;
+
     let visibleCharIndex = 0;
     for (let i = 0; i < window.density.length; i++) {
       const char = window.density.charAt(i);
       if (char === ' ') continue;
-  
+
       let col;
-      if (window.colorCount === 1) {
+      if (paletteLightToDark) {
+        const N = paletteLightToDark.length;
+        const idx = Math.min(N - 1, Math.floor((visibleCharIndex / totalChars) * N));
+        const rgb = paletteLightToDark[idx];
+        col = p.color(rgb[0], rgb[1], rgb[2], 255);
+      } else if (window.colorCount === 1) {
         col = p.color(...hslToRgb(...window.startColor.slice(0, 3)), window.startColor[3] * 255);
       } else if (window.colorCount === 2) {
         if (window.LERP) {

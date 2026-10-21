@@ -2,13 +2,25 @@ import p5 from "p5";
 import "./styles.css";
 import { initializeControls, loadNewImage } from "./controls.js";
 import { loadFont, getSubsetFont, fontToBase64 } from "./fontsubset.js";
-import { updateColorMap, kMeansColorClustering, hslToRgb, rgbToHsl } from "./colorUtils.js";
+import { updateColorMap, hslToRgb, rgbToHsl, getActivePaletteRgb } from "./colorUtils.js";
 import { applyHslOffsetToRgb, clamp } from "./colorUtils.js";
+import { makeNearestMatcher, sortByLightness, rgbToLab } from "./paletteUtils.js";
+import { withLayer, getLayerCount, isLayerVisible, getActiveLayer } from "./layers.js";
+
+// Asset paths. Overridable via .env (VITE_DEFAULT_FONT / VITE_DEFAULT_IMAGE),
+// but fall back to the bundled assets in /public so a fresh clone runs.
+const DEFAULT_FONT_PATH = import.meta.env.VITE_DEFAULT_FONT || "/fonts/geom2.ttf";
+const DEFAULT_IMAGE_PATH = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sun.png";
 
 let p5Instance;
 let animationFrameId = null;
-let colorExtractionWorker = new Worker(new URL('./color-extraction-worker.js', import.meta.url));
-let gridCellColors = null;
+let colorExtractionWorker = new Worker(
+  new URL("./color-extraction-worker.js", import.meta.url),
+  { type: "module" }
+);
+let gridCellColors = null;          // cell colours of the layer currently being drawn
+const cellColorCache = new Map();   // layerIndex -> { columns, rows, colors }
+const cellColorPending = new Set(); // layer indices with an extraction in flight
 
 function createSketch(p) {
   let font;
@@ -40,90 +52,96 @@ function createSketch(p) {
 
   function updateColumns(newColumns) {
     window.gridColumns = newColumns;
-    
-    if (window.useImageColors) {
-      gridCellColors = null;
-    }
-    
+    // Per-layer cell colours are keyed by grid size, so a stale cache is
+    // detected at draw time and re-extracted automatically.
     window.updateSketch();
   }
-  
-  window.updateColumns = updateColumns; 
+
+  window.updateColumns = updateColumns;
 
   window.updateSketch = function () {
-    
+
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
     }
-    
+
     animationFrameId = requestAnimationFrame(() => {
       try {
         if (!window.img || typeof window.img.height === "undefined" || typeof window.img.width === "undefined") {
           console.log("No valid image available");
           return;
         }
-        
+
         if (!p || typeof p.floor !== "function" || typeof p.width === "undefined") {
           console.log("p5 instance not properly initialized");
           return;
         }
-  
+
         gridRows = p.floor(window.gridColumns * (window.img.height / window.img.width));
         gw = p.width / window.gridColumns;
-        p.textSize(gw * 0.9);
-        
-        if (window.useImageColors && !gridCellColors) {
-          if (!window.isExtractingColors) {
-            console.log("Using image colors. Extracting colors with updated grid dimensions.");
-            window.isExtractingColors = true;
-            window.extractColors();
-          }
-          // Show loading state
-          p.background(220);
-          p.fill(0);
-          p.textSize(20);
-          p.textAlign(p.CENTER, p.CENTER);
-          p.text("Extracting colors...", p.width / 2, p.height / 2);
-          return;
-        }
-        
-        if (!window.useImageColors) {
-          console.log("Updating color map");
-          colorMap = updateColorMap(p, window);
-        } else {
-          console.log("Using image colors");
-        }
-        
-        // const bgColor = getBgColor();
-        // p.background(bgColor);
-        
-        if (typeof drawAsciiArt === "function") {
-          drawAsciiArt();
-        } else {
-          console.log("drawAsciiArt function not found");
-        }
-        
+
+        drawAsciiArt();
         p.redraw();
       } catch (error) {
         console.error("Error in updateSketch:", error);
       }
     });
   };
-  
-  window.extractColors = function() {
-    if (!window.img) return;
-  
-    const imgData = window.img.canvas.getContext('2d').getImageData(0, 0, window.img.width, window.img.height);
+
+  /** Ask the worker for per-cell average colours for one layer's grid. */
+  function requestCellColors(layerIndex, columns, rows) {
+    if (!window.img || cellColorPending.has(layerIndex)) return;
+    cellColorPending.add(layerIndex);
+    window.isExtractingColors = true;
+    const imgData = window.img.canvas.getContext("2d").getImageData(0, 0, window.img.width, window.img.height);
     colorExtractionWorker.postMessage({
+      type: "gridColors",
       imageData: imgData,
-      gridColumns: window.gridColumns,
-      gridRows: gridRows
+      gridColumns: columns,
+      gridRows: rows,
+      layerIndex: layerIndex,
+    });
+  }
+
+  /** Forget cached cell colours: one layer, or all of them (e.g. new image). */
+  window.invalidateCellColors = function (layerIndex) {
+    if (layerIndex === undefined) {
+      cellColorCache.clear();
+      cellColorPending.clear();
+    } else {
+      cellColorCache.delete(layerIndex);
+      cellColorPending.delete(layerIndex);
+    }
+    window.isExtractingColors = cellColorPending.size > 0;
+  };
+
+  // Kept for the controls: re-extract the active layer's colours.
+  window.extractColors = function () {
+    window.invalidateCellColors(getActiveLayer());
+    window.updateSketch();
+  };
+
+  // Ask the worker for k representative colours from the current image.
+  // The result arrives via colorExtractionWorker.onmessage -> window.applyExtractedPalette.
+  window.extractPalette = function (k, requestId) {
+    if (!window.img || !window.img.canvas) return;
+    const imgData = window.img.canvas.getContext("2d").getImageData(0, 0, window.img.width, window.img.height);
+    const cols = window.gridColumns;
+    const rows = gridRows || Math.max(1, Math.floor(cols * (window.img.height / window.img.width)));
+    colorExtractionWorker.postMessage({
+      type: "palette",
+      imageData: imgData,
+      gridColumns: cols,
+      gridRows: rows,
+      k: k,
+      seed: 1,
+      requestId: requestId,
     });
   };
 
   p.preload = function () {
-    const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
-    const defaultImagePath = import.meta.env.VITE_DEFAULT_IMAGE || "/img/sun.png";
+    const defaultFontPath = DEFAULT_FONT_PATH;
+    const defaultImagePath = DEFAULT_IMAGE_PATH;
 
     font = p.loadFont(defaultFontPath, () => {
       console.log("Font loaded successfully.");
@@ -236,18 +254,82 @@ function createSketch(p) {
     }
   }
 
+/**
+ * Draw the whole picture: the global flat background, then every visible
+ * layer in order (layer 1 at the bottom). Each layer is rendered with its own
+ * settings swapped into window.*, so drawLayer() can keep reading globals.
+ */
 function drawAsciiArt(graphics = null) {
-  // console.log("Drawing ASCII art, graphics null?", graphics === null);
-
   const isOffscreen = graphics !== null;
   const canvas = isOffscreen ? graphics : p;
   const imgToUse = isOffscreen ? highResImg : window.img;
 
-  // ---- Flat background (ALWAYS) uses bgColorRGB + bgAlpha
+  // ---- Flat background: global, drawn once beneath all layers
   const [br, bg, bb] = window.bgColorRGB || [0, 0, 0];
   const bgA = Math.round((window.bgAlpha ?? 1) * 255);
   canvas.background(br, bg, bb, bgA);
   canvas.textFont(font);
+  imgToUse.loadPixels();
+
+  const ratio = window.img.height / window.img.width;
+  let waiting = false;
+
+  const count = getLayerCount() || 1;
+  for (let i = 0; i < count; i++) {
+    if (!isLayerVisible(i)) continue;
+    withLayer(i, () => {
+      const rows = Math.max(1, Math.floor(window.gridColumns * ratio));
+
+      if (window.useImageColors) {
+        const cache = cellColorCache.get(i);
+        if (!cache || cache.columns !== window.gridColumns || cache.rows !== rows) {
+          requestCellColors(i, window.gridColumns, rows);
+          waiting = true;
+          return; // this layer is drawn once its colours arrive
+        }
+        gridCellColors = cache.colors;
+        colorMap = null;
+      } else {
+        gridCellColors = null;
+        colorMap = updateColorMap(p, window);
+      }
+
+      gridRows = rows;
+      drawLayer(canvas, imgToUse);
+    });
+  }
+
+  if (waiting && !isOffscreen) {
+    p.push();
+    p.noStroke();
+    p.fill(0, 170);
+    p.rect(0, p.height / 2 - 22, p.width, 44);
+    p.fill(255);
+    p.textFont("monospace");
+    p.textSize(18);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("Extracting colors...", p.width / 2, p.height / 2);
+    p.pop();
+    canvas.textFont(font);
+  }
+}
+
+/** Draw one layer's glyphs and pixel backgrounds using the current window.* settings. */
+function drawLayer(canvas, imgToUse) {
+  // Per-layer opacity. Pixel backgrounds use the layer's own alpha (the global
+  // "Background alpha" only affects the flat canvas background now); glyphs and
+  // their shadows are scaled by the layer's glyph opacity on top of any
+  // per-colour alpha they already carry.
+  // (drawLayer declares its own `clamp` further down, so clamp inline here)
+  const clamp01 = (v) => Math.max(0, Math.min(1, typeof v === "number" ? v : 1));
+  const layerBgK = clamp01(window.layerBgAlpha);
+  const layerGlyphK = clamp01(window.layerGlyphAlpha);
+  const bgA = Math.round(layerBgK * 255);
+  const drawGlyphs = layerGlyphK > 0;
+  const scaleGlyphAlpha = (col) =>
+    layerGlyphK >= 1 || !col || !col.levels
+      ? col
+      : p.color(col.levels[0], col.levels[1], col.levels[2], Math.round((col.levels[3] ?? 255) * layerGlyphK));
 
   const useOriginalGrid = window.useImageColors && gridCellColors;
 
@@ -366,11 +448,106 @@ function drawAsciiArt(graphics = null) {
   };
 
   const drawGlyph = (ch, xCenter, yCenter, fillCol, dxPx = 0, dyPx = 0) => {
-    canvas.fill(fillCol);
+    canvas.fill(scaleGlyphAlpha(fillCol));
     canvas.text(ch, xCenter + dxPx, yCenter + dyPx);
   };
 
   const drawShadows = shadowMode === "single" || shadowMode === "double";
+
+  // ---------------------------------------------------------------------------
+  // Palette constraint (image-colour mode). In manual mode the palette is
+  // applied inside updateColorMap instead, so nothing extra is needed here.
+  // ---------------------------------------------------------------------------
+  // One canonical ordering (dark -> light) so indices agree across mappings.
+  const activePaletteRaw = getActivePaletteRgb(window);
+  const activePalette = activePaletteRaw ? sortByLightness(activePaletteRaw) : null;
+  const paletteNearest = activePalette ? makeNearestMatcher(activePalette) : null;
+  const paletteLab = activePalette ? activePalette.map(rgbToLab) : null;
+  const paletteMapping = window.paletteMapping === "brightness" ? "brightness" : "nearest";
+
+  // Two colours are hue-compatible unless both are clearly chromatic and their
+  // hues sit far apart. Near-neutrals (black, grey, white) go with anything.
+  // This is what stops e.g. an orange background appearing behind a cyan glyph.
+  const NEUTRAL_CHROMA = 12;    // Lab chroma below which a colour has no real hue
+  const MAX_HUE_DIFF_DEG = 75;
+  const hueCompatible = (a, b) => {
+    const ca = Math.hypot(a[1], a[2]);
+    const cb = Math.hypot(b[1], b[2]);
+    if (ca < NEUTRAL_CHROMA || cb < NEUTRAL_CHROMA) return true;
+    let d = Math.abs(Math.atan2(a[2], a[1]) - Math.atan2(b[2], b[1])) * (180 / Math.PI);
+    if (d > 180) d = 360 - d;
+    return d <= MAX_HUE_DIFF_DEG;
+  };
+
+  // Nearest palette entry (Lab) to an arbitrary colour, restricted to entries
+  // of compatible hue. Returns -1 when there is none.
+  const nearestCompatible = (lab, excludeIdx) => {
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < paletteLab.length; i++) {
+      if (i === excludeIdx) continue;
+      const pl = paletteLab[i];
+      if (!hueCompatible(lab, pl)) continue;
+      const dl = lab[0] - pl[0], da = lab[1] - pl[1], db = lab[2] - pl[2];
+      const d = dl * dl + da * da + db * db;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  };
+
+  // For every palette entry, its best darker (dir -1) or lighter (dir +1)
+  // partner: same hue family first, then neutrals, never an opposing hue.
+  // Lightness is weighted low because a lightness change is the whole point.
+  const buildStepTable = (dir) =>
+    paletteLab.map((g, gi) => {
+      let best = -1, bestD = Infinity;
+      for (let i = 0; i < paletteLab.length; i++) {
+        if (i === gi) continue;
+        const pl = paletteLab[i];
+        if (dir < 0 ? pl[0] >= g[0] : pl[0] <= g[0]) continue;
+        if (!hueCompatible(g, pl)) continue;
+        const dl = pl[0] - g[0], da = pl[1] - g[1], db = pl[2] - g[2];
+        const d = da * da + db * db + 0.25 * dl * dl;
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      return best;
+    });
+  const stepDarker = activePalette ? buildStepTable(-1) : null;
+  const stepLighter = activePalette ? buildStepTable(1) : null;
+
+  // "By brightness" glyph mapping: palette entry closest in Lab lightness.
+  const nearestByLightness = (L) => {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < paletteLab.length; i++) {
+      const d = Math.abs(paletteLab[i][0] - L);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  };
+
+  // Snap a derived pixel-background colour to the palette. The N-colour budget
+  // is shared between glyphs and backgrounds.
+  //   1) Take the nearest palette entry of compatible hue to the derived colour.
+  //   2) If that is the glyph's own entry, move to the glyph's darker or lighter
+  //      partner (following the sign of the lightness offset). Partners are
+  //      chosen by hue, not by position in the lightness order, so a cyan glyph
+  //      gets dark teal behind it rather than orange.
+  //   3) If no suitable partner exists the cell stays flat in the glyph colour,
+  //      so black stays black and no clashing hue is introduced.
+  const snapBackgroundToPalette = (rgb, glyphIdx, direction) => {
+    if (activePalette.length === 1) return activePalette[0];
+
+    const lab = rgbToLab(rgb);
+    let idx = nearestCompatible(lab, -1);
+    if (idx < 0) idx = glyphIdx >= 0 ? glyphIdx : paletteNearest(rgb);
+    if (glyphIdx < 0 || idx !== glyphIdx) return activePalette[idx];
+
+    let partner;
+    if (direction < 0) partner = stepDarker[glyphIdx];
+    else if (direction > 0) partner = stepLighter[glyphIdx];
+    else partner = nearestCompatible(lab, glyphIdx);
+
+    return activePalette[partner >= 0 ? partner : glyphIdx];
+  };
 
   // ---------------------------------------------------------------------------
   // Main loop
@@ -394,6 +571,7 @@ function drawAsciiArt(graphics = null) {
 
       // Character color
       let charColor;
+      let glyphPaletteIdx = -1; // which palette entry the glyph uses (if any)
       if (window.useImageColors && gridCellColors) {
         const colorIndex = y * scaledGridColumns + x;
 
@@ -405,20 +583,36 @@ function drawAsciiArt(graphics = null) {
           }
         }
 
-        // Apply image-glyph HSL offsets (global)
+        // Apply image-glyph HSL offsets (global). These run BEFORE palette
+        // snapping so they steer which palette entry a cell lands on rather
+        // than pushing the output outside the palette.
         const hOff = typeof window.imageGlyphHueOffset === "number" ? window.imageGlyphHueOffset : 0;
         const sOff = typeof window.imageGlyphSatOffset === "number" ? window.imageGlyphSatOffset : 0;
         const lOff = typeof window.imageGlyphLightOffset === "number" ? window.imageGlyphLightOffset : 0;
 
-        const outRgb = applyHslOffsetToRgb([r, g, b], hOff, sOff, lOff) || [r, g, b];
+        let outRgb = applyHslOffsetToRgb([r, g, b], hOff, sOff, lOff) || [r, g, b];
 
-        // Apply global glyph alpha (0..1)
-        const a01 = typeof window.imageGlyphAlpha === "number" ? clamp(window.imageGlyphAlpha, 0, 1) : 1;
-        const a255 = Math.round(a01 * 255);
+        // Snap to the constrained palette, if one is active
+        if (activePalette) {
+          if (paletteMapping === "brightness") {
+            // Entry closest in lightness to the cell's own colour (hue ignored).
+            // Uses the real cell colour, not the contrast-adjusted glyph value,
+            // so the darkest and lightest entries are reachable at any contrast.
+            glyphPaletteIdx = nearestByLightness(rgbToLab(outRgb)[0]);
+          } else {
+            glyphPaletteIdx = paletteNearest(outRgb);
+          }
+          outRgb = activePalette[glyphPaletteIdx];
+        }
 
-        charColor = p.color(outRgb[0], outRgb[1], outRgb[2], a255);
+        // Opaque here; the per-layer "Chars" opacity is applied when the glyph is drawn
+        charColor = p.color(outRgb[0], outRgb[1], outRgb[2], 255);
       } else if (colorMap) {
         charColor = colorMap.get(c);
+        // Manual mode: colorMap already yields palette colours; find the index
+        if (activePalette && charColor) {
+          glyphPaletteIdx = paletteNearest(getP5Rgb(charColor));
+        }
       }
 
       const baseChar = charColor || p.color(255);
@@ -441,15 +635,15 @@ function drawAsciiArt(graphics = null) {
         baseRgbForHslOffset = [gr, gg, gb];
       }
 
+      let bgRgb = null;
       switch (advancedBgMode) {
         case "hslOffset": {
-          const rgb = applyHslOffsetToRgb(
+          bgRgb = applyHslOffsetToRgb(
             baseRgbForHslOffset,
             window.hOffset || 0,
             window.sOffset || 0,
             window.lOffset || 0
           );
-          if (rgb) bgRectColor = p.color(rgb[0], rgb[1], rgb[2], bgA);
           break;
         }
 
@@ -457,8 +651,7 @@ function drawAsciiArt(graphics = null) {
           const [pr, pg, pb] = window.bgColorRGB || [120, 170, 255];
           const [hh, ss] = rgbToHsl(pr, pg, pb);
           const ll = Math.round((adjustedAvg / 255) * 100);
-          const [r, g, b] = hslToRgb(hh, ss, ll);
-          bgRectColor = p.color(r, g, b, bgA);
+          bgRgb = hslToRgb(hh, ss, ll);
           break;
         }
 
@@ -467,7 +660,14 @@ function drawAsciiArt(graphics = null) {
           break;
       }
 
-      if (bgRectColor) {
+      // Pixel backgrounds share the palette budget with glyphs
+      if (bgRgb && activePalette) {
+        const direction = advancedBgMode === "hslOffset" ? Math.sign(window.lOffset || 0) : 0;
+        bgRgb = snapBackgroundToPalette(bgRgb, glyphPaletteIdx, direction);
+      }
+      if (bgRgb) bgRectColor = p.color(bgRgb[0], bgRgb[1], bgRgb[2], bgA);
+
+      if (bgRectColor && layerBgK > 0) {
         canvas.noStroke();
         canvas.fill(bgRectColor);
 
@@ -509,8 +709,10 @@ function drawAsciiArt(graphics = null) {
       }
 
       // Main glyph
-      canvas.fill(baseChar);
-      canvas.text(c, xPos, yPos);
+      if (drawGlyphs) {
+        canvas.fill(scaleGlyphAlpha(baseChar));
+        canvas.text(c, xPos, yPos);
+      }
     }
   }
 }
@@ -612,7 +814,8 @@ function drawAsciiArt(graphics = null) {
         await new Promise((resolve) => {
           window.extractColors();
           colorExtractionWorker.onmessage = function(e) {
-            gridCellColors = e.data;
+            if (e.data?.type === "palette") return;
+            gridCellColors = e.data.colors;
             console.log("Color extraction completed. Total colors:", gridCellColors.length);
             resolve();
           };
@@ -621,8 +824,7 @@ function drawAsciiArt(graphics = null) {
   
       const uniqueChars = [...new Set(window.density)].join("");
       if (!window.loadedFont) {
-        const defaultFontPath = import.meta.env.VITE_DEFAULT_FONT;
-        window.loadedFont = await loadFont(defaultFontPath);
+        window.loadedFont = await loadFont(DEFAULT_FONT_PATH);
       }
       const subsetFontData = await getSubsetFont(window.loadedFont, uniqueChars);
       const fontBase64 = fontToBase64(subsetFontData);
@@ -729,9 +931,23 @@ function drawAsciiArt(graphics = null) {
   };
   
   colorExtractionWorker.onmessage = function(e) {
-    gridCellColors = e.data;
-    window.useImageColors = true;
-    window.isExtractingColors = false;
+    const msg = e.data || {};
+
+    if (msg.type === "palette") {
+      if (typeof window.applyExtractedPalette === "function") {
+        window.applyExtractedPalette(msg.colors, msg.requestId);
+      }
+      return;
+    }
+
+    const layerIndex = msg.layerIndex ?? 0;
+    cellColorCache.set(layerIndex, {
+      columns: msg.gridColumns,
+      rows: msg.gridRows,
+      colors: msg.colors,
+    });
+    cellColorPending.delete(layerIndex);
+    window.isExtractingColors = cellColorPending.size > 0;
     window.updateSketch();
   };
 }
