@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alien Character Lab</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+  <div id="lab">
+    <main id="stage">
+      <header>
+        <h1>Alien Character Lab</h1>
+        <a href="/">&larr; ASCII generator</a>
+      </header>
+
+      <div id="preview-row">
+        <div id="preview-wrap">
+          <canvas id="preview" width="480" height="480"></canvas>
+        </div>
+
+        <div id="side-info">
+          <div id="meta"></div>
+
+          <div class="button-row">
+            <button id="randomise" title="Shortcut: R or Space">Randomise</button>
+            <button id="back" class="secondary" title="Shortcut: Z">Back</button>
+          </div>
+
+          <h3>Palette</h3>
+          <div id="palette-strip"></div>
+
+          <h3>Layers</h3>
+          <div id="layer-toggles"></div>
+        </div>
+      </div>
+
+      <h2>Variations <small>click one to adopt it</small></h2>
+      <div id="variants"></div>
+    </main>
+
+    <aside id="panel">
+      <section>
+        <h2>Base</h2>
+
+        <label for="species">Species</label>
+        <select id="species"></select>
+
+        <label for="seed">Seed</label>
+        <input type="number" id="seed" min="0" step="1">
+
+        <label for="size">Canvas size: <span id="size-label"></span></label>
+        <input type="range" id="size" min="16" max="64" step="1">
+
+        <label for="strength">Variation strength: <span id="strength-label"></span></label>
+        <input type="range" id="strength" min="5" max="100" step="5">
+        <p class="hint">Low values mutate the current character. 100% rolls completely fresh ones.</p>
+      </section>
+
+      <section>
+        <h2>Output</h2>
+
+        <label class="check"><input type="checkbox" id="outline"> Outline</label>
+
+        <label for="bg-mode">Background</label>
+        <div class="inline">
+          <select id="bg-mode">
+            <option value="auto">Auto</option>
+            <option value="transparent">Transparent</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input type="color" id="bg-custom">
+        </div>
+
+        <label for="export-scale">Export</label>
+        <div class="inline">
+          <select id="export-scale">
+            <option value="1">1x (native)</option>
+            <option value="8">8x</option>
+            <option value="16" selected>16x</option>
+            <option value="32">32x</option>
+          </select>
+          <button id="export-png">PNG</button>
+          <button id="export-json" class="secondary">JSON</button>
+        </div>
+      </section>
+
+      <div id="param-controls"></div>
+    </aside>
+  </div>
+
+  <script type="module" src="/src/characters/lab.js"></script>
+</body>
+
+</html>
