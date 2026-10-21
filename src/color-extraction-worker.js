@@ -1,7 +1,39 @@
-self.onmessage = function(e) {
-  const { imageData, gridColumns, gridRows } = e.data;
-  const gridCellColors = extractGridColors(imageData, gridColumns, gridRows);
-  self.postMessage(gridCellColors);
+import { extractPaletteKMeans } from "./paletteUtils.js";
+
+// Messages:
+//   { type: "gridColors", imageData, gridColumns, gridRows }
+//       -> { type: "gridColors", colors: [[r,g,b], ...] }   (one per grid cell)
+//   { type: "palette", imageData, k, seed }
+//       -> { type: "palette", colors: [[r,g,b], ...] }      (k entries)
+self.onmessage = function (e) {
+  const msg = e.data || {};
+  const type = msg.type || "gridColors";
+
+  if (type === "palette") {
+    // Cluster the same per-cell averages the standard extraction draws, so the
+    // palette describes exactly the colours that end up on screen. Clustering
+    // raw pixels instead merges small vivid regions into their surroundings.
+    const cells = extractGridColors(msg.imageData, msg.gridColumns, msg.gridRows);
+    const rgba = new Uint8ClampedArray(cells.length * 4);
+    for (let i = 0; i < cells.length; i++) {
+      rgba[i * 4] = cells[i][0];
+      rgba[i * 4 + 1] = cells[i][1];
+      rgba[i * 4 + 2] = cells[i][2];
+      rgba[i * 4 + 3] = 255;
+    }
+    const colors = extractPaletteKMeans(rgba, msg.k, { seed: msg.seed ?? 1, maxSamples: cells.length });
+    self.postMessage({ type: "palette", colors, requestId: msg.requestId });
+    return;
+  }
+
+  const colors = extractGridColors(msg.imageData, msg.gridColumns, msg.gridRows);
+  self.postMessage({
+    type: "gridColors",
+    colors,
+    layerIndex: msg.layerIndex ?? 0,
+    gridColumns: msg.gridColumns,
+    gridRows: msg.gridRows,
+  });
 };
 
 function extractGridColors(imageData, gridColumns, gridRows) {
